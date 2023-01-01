@@ -1,0 +1,13 @@
+[package]
+name = "merkle-lite"
+version = "0.0.1"
+edition = "2021"
+authors = ["Keith Noguchi <keith@noguchi.us>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/keithnoguchi/merkle-lite"
+keywords = ["crypto", "hash", "merkle", "merkle-tree"]
+categories = ["data-structures", "cryptography"]
+description = "Binary Merkle Tree, designed for Rust Crypto hash functions"
+
+[dependencies]
