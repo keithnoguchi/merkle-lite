@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 2 * * 0'
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+  RUSTUP_MAX_RETRIES: 10
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+      - name: Run cargo test
+        run: |
+          cargo test --workspace --all-targets --all-features --bins --examples
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+      - name: Run cargo fmt
+        run: |
+          cargo fmt --check --all
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo clippy --all-features --all-targets
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+      - name: Run cargo check
+        run: |
+          cargo check --workspace --all-targets --all-features --bins --examples
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+      - name: Run cargo build
+        run: |
+          cargo build --workspace --all-targets --all-features --bins --examples
