@@ -1,18 +1,28 @@
 [package]
 name = "merkle-lite"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 authors = ["Keith Noguchi <keith@noguchi.us>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/keithnoguchi/merkle-lite"
 keywords = ["crypto", "hash", "merkle", "merkle-tree"]
-categories = ["data-structures", "cryptography"]
-description = "Binary Merkle Tree, designed for Rust Crypto hash functions"
+categories = ["data-structures", "cryptography", "no-std"]
+description = "Generic Binary Merkle Tree for Rust Crypto hash functions"
 
 [dependencies]
 digest = "0.10.6"
 
 [dev-dependencies]
+bencher = "0.1.5"
 hex-literal = "0.3.4"
+sha2 = "0.10.6"
 sha3 = "0.10.6"
+
+[[bench]]
+name = "sha2"
+harness = false
+
+[[bench]]
+name = "sha3"
+harness = false
