@@ -1,3 +1,7 @@
+# Version 0.0.3
+
+- Add sha2 and sha3 benchmarks with 100,000 leaves.
+
 # Version 0.0.2
 
 - IntoIterator for the tree generation with the Merkle root calculation.

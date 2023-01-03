@@ -1,5 +1,6 @@
 # merkle-lite
 
+![CI](https://github.com/keithnoguchi/merkle-lite/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
 https://github.com/keithnoguchi/merkle-lite)
 [![Cargo](https://img.shields.io/crates/v/merkle-lite.svg)](
