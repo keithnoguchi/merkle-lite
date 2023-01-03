@@ -11,33 +11,28 @@ use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 const NR_LEAVES: usize = 100_000;
 
-fn sha224(b: &mut Bencher)
-{
+fn sha224(b: &mut Bencher) {
     let leaves = [[0u8; 28]; NR_LEAVES];
     b.iter(|| {
         let _tree: MerkleTree<Sha224> = leaves.iter().collect();
     })
 }
 
-
-fn sha256(b: &mut Bencher)
-{
+fn sha256(b: &mut Bencher) {
     let leaves = [[0u8; 32]; NR_LEAVES];
     b.iter(|| {
         let _tree: MerkleTree<Sha256> = leaves.iter().collect();
     })
 }
 
-fn sha384(b: &mut Bencher)
-{
+fn sha384(b: &mut Bencher) {
     let leaves = [[0u8; 48]; NR_LEAVES];
     b.iter(|| {
         let _tree: MerkleTree<Sha384> = leaves.iter().collect();
     })
 }
 
-fn sha512(b: &mut Bencher)
-{
+fn sha512(b: &mut Bencher) {
     let leaves = [[0u8; 64]; NR_LEAVES];
     b.iter(|| {
         let _tree: MerkleTree<Sha512> = leaves.iter().collect();
