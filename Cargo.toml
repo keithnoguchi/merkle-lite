@@ -1,6 +1,6 @@
 [package]
 name = "merkle-lite"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 authors = ["Keith Noguchi <keith@noguchi.us>"]
 license = "MIT OR Apache-2.0"

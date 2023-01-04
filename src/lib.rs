@@ -51,6 +51,12 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
+    /// Conversion from an `Iterator`.
+    ///
+    /// # Panics
+    ///
+    /// May panic in case the length of iterator item is not the valid
+    /// hash length.
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
         let iter = iter.into_iter();
         let (leaf_len, _) = iter.size_hint();
