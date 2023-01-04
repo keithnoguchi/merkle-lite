@@ -10,7 +10,7 @@
 //! use merkle_lite::MerkleTree;
 //! use sha3::Sha3_256;
 //!
-//! let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].into_iter().collect();
+//! let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].iter().collect();
 //!
 //! assert_eq!(
 //!     tree.root(),
@@ -72,8 +72,13 @@ where
             tree.push(node);
         });
 
+        // nothing to do in case of the lone leaf.
+        if tree.leaf_len() == 1 {
+            return tree;
+        }
+
         // make it even leaves.
-        if tree.leaf_len() & 1 == 1 {
+        if tree.leaf_len() & 0b1 == 0b1 {
             tree.push(tree.data[tree.leaf_range.end - 1].clone());
         }
 

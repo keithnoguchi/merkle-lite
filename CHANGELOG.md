@@ -1,6 +1,7 @@
 # Version 0.0.4
 
-- Update the IntoIterator documentation with the panic section.
+- Fix the lone leaf handling.
+- Panic section in IntoIterator impl in case of the wrong hash length.
 
 # Version 0.0.3
 
