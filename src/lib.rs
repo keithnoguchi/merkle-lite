@@ -10,7 +10,7 @@
 //! use merkle_lite::MerkleTree;
 //! use sha3::Sha3_256;
 //!
-//! let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].into_iter().collect();
+//! let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].iter().collect();
 //!
 //! assert_eq!(
 //!     tree.root(),
@@ -51,6 +51,12 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
+    /// Conversion from an `Iterator`.
+    ///
+    /// # Panics
+    ///
+    /// May panic in case the length of iterator item is not the valid
+    /// hash length.
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
         let iter = iter.into_iter();
         let (leaf_len, _) = iter.size_hint();
@@ -66,8 +72,13 @@ where
             tree.push(node);
         });
 
+        // nothing to do in case of the lone leaf.
+        if tree.leaf_len() == 1 {
+            return tree;
+        }
+
         // make it even leaves.
-        if tree.leaf_len() & 1 == 1 {
+        if tree.leaf_len() & 0b1 == 0b1 {
             tree.push(tree.data[tree.leaf_range.end - 1].clone());
         }
 

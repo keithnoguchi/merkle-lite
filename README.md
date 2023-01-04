@@ -25,7 +25,7 @@ use hex_literal::hex;
 use merkle_lite::MerkleTree;
 use sha3::Sha3_256;
 
-let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].into_iter().collect();
+let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].iter().collect();
 
 assert_eq!(
     tree.root(),
