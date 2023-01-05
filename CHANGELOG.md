@@ -1,5 +1,6 @@
 # Version 0.0.5
 
+- MerkleTree::leaves() to return the iterator to the Merkle leaves.
 - Cleanup document.
 
 # Version 0.0.4
