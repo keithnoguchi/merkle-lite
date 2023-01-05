@@ -250,7 +250,7 @@ where
     /// }
     /// ```
     pub fn leaves(&self) -> impl Iterator<Item = &[u8]> {
-        self.data[self.leaf_range.start..self.leaf_range.end]
+        self.data[self.leaf_range.clone()]
             .iter()
             .map(|n| n.as_ref())
     }
