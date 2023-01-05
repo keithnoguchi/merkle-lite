@@ -1,13 +1,7 @@
 //! Generic Binary Merkle Tree
 //!
-//! A simple and fast generic binary [Merkle Tree] for [Rust Crypto]
-//! hash functions.
-//!
-//! The goal of [`MerkleTree`] is simple yet fast implementation
-//! of [Merkle Tree] by supporting the standard Rust traits, e.g.
-//! [`FromIterator`].
-//!
-//! This also makes [`MerkleTree`] work with other data types ergonomically.
+//! A simple, fast, and ergonomic generic binary [Merkle Tree] for
+//! [Rust Crypto] hash functions.
 //!
 //! # Examples
 //!
@@ -21,9 +15,9 @@
 //!
 //! use merkle_lite::MerkleTree;
 //!
-//! // 16 identical leaves for the demonstration purpose.
-//! let leaves = [[0xab_u8; 32]; 16];
-//! let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+//! // 13 identical leaves for the demonstration purpose.
+//! let hashes = [[0xab_u8; 32]; 13];
+//! let tree: MerkleTree<Sha3_256> = hashes.iter().collect();
 //!
 //! assert_eq!(
 //!     tree.root(),

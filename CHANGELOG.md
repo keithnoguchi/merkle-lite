@@ -1,3 +1,7 @@
+# Version 0.0.6
+
+- Fix the CI link in README.md.
+
 # Version 0.0.5
 
 - MerkleTree::leaves() to return the iterator to the Merkle leaves.
