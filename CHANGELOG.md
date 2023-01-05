@@ -1,3 +1,7 @@
+# Version 0.0.5
+
+- Cleanup document.
+
 # Version 0.0.4
 
 - Fix the lone leaf handling.

@@ -7,7 +7,7 @@ use sha3::Sha3_256;
 fn tree_leaf_len_single() {
     let leaves = [[0u8; 32]];
 
-    let tree = MerkleTree::<Sha3_256>::from_iter(leaves.iter());
+    let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
     assert_eq!(tree.leaf_len(), 1);
 }
 
@@ -26,6 +26,7 @@ fn tree_leaf_len_odd() {
     for i in (3..100).step_by(2) {
         let leaves: Vec<_> = iter::repeat([0u8; 32]).take(i).collect();
 
+        // The last leaf is copied over to make the even leaves.
         let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
         assert_eq!(tree.leaf_len(), leaves.len() + 1);
     }
