@@ -1,25 +1,39 @@
 //! Generic Binary Merkle Tree
 //!
-//! Binary Merkle Tree, designed for [Rust Crypto] hash functions.
+//! A simple and fast generic binary [Merkle Tree] for [Rust Crypto]
+//! hash functions.
+//!
+//! The goal of [`MerkleTree`] is simple yet fast implementation
+//! of [Merkle Tree] by supporting the standard Rust traits, e.g.
+//! [`FromIterator`].
+//!
+//! This also makes [`MerkleTree`] work with other data types ergonomically.
 //!
 //! # Examples
 //!
-//! Here is the example to calculate the Merkle root with [SHA3] crate:
-//! ```
-//! use hex_literal::hex;
-//! use merkle_lite::MerkleTree;
-//! use sha3::Sha3_256;
+//! Here is how to create [`MerkleTree`] for the array of leaf hash.
 //!
-//! let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].iter().collect();
+//! Thanks to [`FromIterator`], all you have to do is just call `collect()`
+//! on the leaf array iterator:
+//! ```
+//! use sha3::Sha3_256;
+//! use hex_literal::hex;
+//!
+//! use merkle_lite::MerkleTree;
+//!
+//! // 16 identical leaves for the demonstration purpose.
+//! let leaves = [[0xab_u8; 32]; 16];
+//! let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
 //!
 //! assert_eq!(
 //!     tree.root(),
 //!     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
 //! );
 //! ```
-//!
+//! [merkle tree]: https://en.wikipedia.org/wiki/Merkle_tree
 //! [rust crypto]: https://github.com/RustCrypto
-//! [sha3]: https://docs.rs/sha3
+//! [`merkletree`]: struct.MerkleTree.html
+//! [`fromiterator`]: https://doc.rust-lang.org/std/iter/trait.FromIterator.html
 #![no_std]
 #![forbid(unsafe_code, missing_docs, missing_debug_implementations)]
 extern crate alloc;
@@ -30,19 +44,41 @@ use core::ops::Range;
 
 use digest::block_buffer;
 use digest::generic_array::ArrayLength;
-use digest::{Digest, Output, OutputSizeUser};
+use digest::{Digest, OutputSizeUser};
 
 type Buffer<B> = <<B as OutputSizeUser>::OutputSize as ArrayLength<u8>>::ArrayType;
 
 /// Generic Binary Merkle Tree
+///
+/// # Examples
+///
+/// Basic usage:
+/// ```
+/// use sha3::Sha3_256;
+/// use hex_literal::hex;
+///
+/// use merkle_lite::MerkleTree;
+///
+/// // 16 identical leaves for the demonstration purpose.
+/// let leaves = [[0xab_u8; 32]; 16];
+/// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+///
+/// assert_eq!(
+///     tree.root(),
+///     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
+/// );
+/// ```
 #[derive(Clone, Debug)]
 pub struct MerkleTree<B>
 where
-    B: OutputSizeUser,
+    B: Digest,
     Buffer<B>: Copy,
 {
-    data: Vec<Node<B>>,
+    /// represents the range of the valid leaves in `data`.
     leaf_range: Range<usize>,
+
+    /// points to the contiguous memory of the array of hash.
+    data: Vec<Node<B>>,
 }
 
 impl<A, B> FromIterator<A> for MerkleTree<B>
@@ -103,7 +139,8 @@ where
     /// use merkle_lite::MerkleTree;
     /// use sha3::Sha3_256;
     ///
-    /// let tree: MerkleTree<Sha3_256> = [[0u8; 32]; 2].into_iter().collect();
+    /// let leaves = [[0u8; 32]; 2];
+    /// let tree: MerkleTree<Sha3_256> = leaves.into_iter().collect();
     ///
     /// assert_eq!(tree.len(), 3);
     /// ```
@@ -120,7 +157,9 @@ where
     /// use merkle_lite::MerkleTree;
     /// use sha3::Sha3_256;
     ///
-    /// let tree: MerkleTree<Sha3_256> = [[0u8; 32]; 0].into_iter().collect();
+    /// // zero length leaf.
+    /// let leaves = [[0u8; 32]; 0];
+    /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
     ///
     /// assert!(tree.is_empty());
     /// ```
@@ -142,9 +181,10 @@ where
     /// use merkle_lite::MerkleTree;
     /// use sha3::Sha3_256;
     ///
-    /// let tree: MerkleTree<Sha3_256> = [[0u8; 32]; 2].into_iter().collect();
+    /// let leaves = [[0u8; 32]; 100];
+    /// let tree: MerkleTree<Sha3_256> = leaves.into_iter().collect();
     ///
-    /// assert_eq!(tree.leaf_len(), 2);
+    /// assert_eq!(tree.leaf_len(), 100);
     /// ```
     pub const fn leaf_len(&self) -> usize {
         self.leaf_range.end - self.leaf_range.start
@@ -161,11 +201,14 @@ where
     ///
     /// Basic usage:
     /// ```
-    /// use hex_literal::hex;
-    /// use merkle_lite::MerkleTree;
     /// use sha3::Sha3_256;
+    /// use hex_literal::hex;
     ///
-    /// let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].into_iter().collect();
+    /// use merkle_lite::MerkleTree;
+    ///
+    /// // identical leaves for the demonstration purpose.
+    /// let leaves = [[0xab_u8; 32]; 14];
+    /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
     ///
     /// assert_eq!(
     ///     tree.root(),
@@ -178,6 +221,38 @@ where
     /// May panic in case the tree is empty.
     pub fn root(&self) -> &[u8] {
         self.data[0].as_ref()
+    }
+
+    /// Returns the leaves iterator of the Merkle tree.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::iter;
+    /// use sha3::Sha3_256;
+    ///
+    /// use merkle_lite::MerkleTree;
+    ///
+    /// // create a sequencial leaf for the demonstration purpose.
+    /// let leaves = iter::repeat(0x1_u8)
+    ///     .enumerate()
+    ///     .map(|(i, byte)| [byte * i as u8; 32])
+    ///     .take(18);
+    ///
+    /// // create a Merkle tree.
+    /// let tree: MerkleTree<Sha3_256> = leaves.clone().collect();
+    ///
+    /// // test leaves.
+    /// assert_eq!(tree.leaf_len(), 18);
+    /// assert_eq!(tree.leaves().count(), 18);
+    /// for (got, want) in tree.leaves().zip(leaves) {
+    ///     assert_eq!(got, want);
+    /// }
+    /// ```
+    pub fn leaves(&self) -> impl Iterator<Item = &[u8]> {
+        self.data[self.leaf_range.start..self.leaf_range.end]
+            .iter()
+            .map(|n| n.as_ref())
     }
 
     fn with_leaf_len(leaf_len: usize) -> Self {
@@ -233,7 +308,10 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
+    /// represents the range of the child node in `data`.
     child_range: Range<usize>,
+
+    /// borrowed reference to the `MerkleTree::data`.
     data: &'a mut [Node<B>],
 }
 
@@ -287,12 +365,11 @@ where
 
 /// Tree node.
 ///
-/// It abstructs the [`digest`] crate's [Output] value.
+/// It abstructs the [`digest::Output`] value.
 ///
-/// [`digest`]: https://crates.io/crates/digest
-/// [Output]: https://docs.rs/digest/latest/digest/type.Output.html
+/// [`digest::Output`]: https://docs.rs/digest/latest/digest/type.Output.html
 #[derive(Copy, Debug)]
-struct Node<B>(Option<Output<B>>)
+struct Node<B>(Option<digest::Output<B>>)
 where
     B: OutputSizeUser,
     Buffer<B>: Copy;
@@ -328,12 +405,12 @@ where
     }
 }
 
-impl<B> From<Output<B>> for Node<B>
+impl<B> From<digest::Output<B>> for Node<B>
 where
     B: OutputSizeUser,
     Buffer<B>: Copy,
 {
-    fn from(inner: Output<B>) -> Self {
+    fn from(inner: digest::Output<B>) -> Self {
         Self(Some(inner))
     }
 }
@@ -349,6 +426,6 @@ where
         if from.len() != B::output_size() {
             return Err(block_buffer::Error);
         }
-        Ok(Self(Some(Output::<B>::clone_from_slice(from))))
+        Ok(Self(Some(digest::Output::<B>::clone_from_slice(from))))
     }
 }

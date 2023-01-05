@@ -8,24 +8,29 @@ https://crates.io/crates/merkle-lite)
 [![Documentation](https://docs.rs/merkle-lite/badge.svg)](
 https://docs.rs/merkle-lite)
 
-A generic binary [Merkle tree], designed for [Rust Crypto] digest functions.
+A simple and fast generic binary [Merkle Tree] for [Rust Crypto]
+hash functions.
 
-[merkle tree]: https://en.wikipedia.org/wiki/Merkle_tree
-[rust crypto]: https://github.com/RustCrypto
+The goal of [`MerkleTree`] is simple yet fast implementation
+of [Merkle Tree] by supporting the standard Rust traits, e.g.
+[`FromIterator`].
+
+This also makes [`MerkleTree`] work with other data types ergonomically.
 
 ## Examples
 
-Here is an example to calculate the merkle root for the identical
-16 leaves with [SHA3]:
+Here is how to create [`MerkleTree`] from the array of leaves.
 
-[sha3]: https://docs.rs/sha3
-
-```rust,no_run
+Thanks to [`FromIterator`],  you just call `collect()` on the array iterator:
+```
 use hex_literal::hex;
-use merkle_lite::MerkleTree;
 use sha3::Sha3_256;
 
-let tree: MerkleTree<Sha3_256> = [[0xab_u8; 32]; 16].iter().collect();
+use merkle_lite::MerkleTree;
+
+// 16 identical leaves for the demonstration purpose.
+let leaves = [[0xab_u8; 32]; 16];
+let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
 
 assert_eq!(
     tree.root(),
@@ -47,3 +52,8 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
+
+[merkle tree]: https://en.wikipedia.org/wiki/Merkle_tree
+[rust crypto]: https://github.com/RustCrypto
+[`merkletree`]: https://docs.rs/merkle-lite/latest/merkle_lite/struct.MerkleTree.html
+[`fromiterator`]: https://doc.rust-lang.org/std/iter/trait.FromIterator.html
