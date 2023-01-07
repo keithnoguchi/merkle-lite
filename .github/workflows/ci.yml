@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo test
         run: |
           cargo test --all-features
@@ -36,6 +38,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo fmt
         run: |
           cargo fmt --all --check
@@ -54,6 +58,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo check
         run: |
           cargo check --all-features --all-targets --bins --examples
@@ -63,6 +69,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo build
         run: |
           cargo build --all-features --all-targets --bins --examples
