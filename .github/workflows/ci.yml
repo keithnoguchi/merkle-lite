@@ -33,6 +33,19 @@ jobs:
         run: |
           cargo test --all-features
 
+  msrv:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # When updating this, the reminder to update the minimum supported
+        # Rust version in Cargo.toml.
+        rust: ['1.56']
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+      - run: cargo build
+
   fmt:
     runs-on: ubuntu-latest
     steps:
