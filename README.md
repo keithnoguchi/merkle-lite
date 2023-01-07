@@ -1,6 +1,7 @@
 # merkle-lite
 
-![CI](https://github.com/keithnoguchi/merkle-lite/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/keithnoguchi/merkle-lite/actions/workflows/ci.yml/badge.svg)](
+https://github.com/keithnoguchi/merkle-lite/actions)
 [![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
 https://github.com/keithnoguchi/merkle-lite)
 [![Cargo](https://img.shields.io/crates/v/merkle-lite.svg)](
@@ -8,29 +9,22 @@ https://crates.io/crates/merkle-lite)
 [![Documentation](https://docs.rs/merkle-lite/badge.svg)](
 https://docs.rs/merkle-lite)
 
-A simple and fast generic binary [Merkle Tree] for [Rust Crypto]
-hash functions.
-
-The goal of [`MerkleTree`] is simple yet fast implementation
-of [Merkle Tree] by supporting the standard Rust traits, e.g.
-[`FromIterator`].
-
-This also makes [`MerkleTree`] work with other data types ergonomically.
+A simple, fast, and ergonomic generic binary [Merkle Tree] for
+[Rust Crypto] hash functions.
 
 ## Examples
 
-Here is how to create [`MerkleTree`] from the array of leaves.
-
-Thanks to [`FromIterator`],  you just call `collect()` on the array iterator:
+Here is how to create `MerkleTree` and the Markle Root
+for the ordered array of cryptographic hashes:
 ```
-use hex_literal::hex;
 use sha3::Sha3_256;
+use hex_literal::hex;
 
 use merkle_lite::MerkleTree;
 
-// 16 identical leaves for the demonstration purpose.
-let leaves = [[0xab_u8; 32]; 16];
-let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+// 13 identical hashes just for the demonstration purpose.
+let hashes = [[0xab_u8; 32]; 13];
+let tree: MerkleTree<Sha3_256> = hashes.iter().collect();
 
 assert_eq!(
     tree.root(),
@@ -55,5 +49,3 @@ dual licensed as above, without any additional terms or conditions.
 
 [merkle tree]: https://en.wikipedia.org/wiki/Merkle_tree
 [rust crypto]: https://github.com/RustCrypto
-[`merkletree`]: https://docs.rs/merkle-lite/latest/merkle_lite/struct.MerkleTree.html
-[`fromiterator`]: https://doc.rust-lang.org/std/iter/trait.FromIterator.html

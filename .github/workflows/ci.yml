@@ -27,15 +27,32 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo test
         run: |
           cargo test --all-features
+
+  msrv:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # When updating this, the reminder to update the minimum supported
+        # Rust version in Cargo.toml.
+        rust: ['1.66']
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+      - run: cargo build
 
   fmt:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo fmt
         run: |
           cargo fmt --all --check
@@ -54,6 +71,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo check
         run: |
           cargo check --all-features --all-targets --bins --examples
@@ -63,6 +82,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
       - name: Run cargo build
         run: |
           cargo build --all-features --all-targets --bins --examples
