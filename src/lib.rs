@@ -32,9 +32,10 @@
 #![forbid(unsafe_code, missing_docs, missing_debug_implementations)]
 extern crate alloc;
 
+use alloc::collections::BTreeSet;
 use alloc::{vec, vec::Vec};
 use core::mem;
-use core::ops::Range;
+use core::ops::{Index, IndexMut, Range};
 
 use digest::block_buffer;
 use digest::generic_array::ArrayLength;
@@ -249,6 +250,47 @@ where
             .map(|n| n.as_ref())
     }
 
+    /// Get the mutable Merkle tree leaves.
+    ///
+    /// Please note that updating the Merkle tree through this
+    /// `MerkleLeavesMut` is inefficient because it re-calculate
+    /// the Merkle root once `MerkleLeavesMut` drops.
+    ///
+    /// # Example
+    ///
+    /// Updating the Merkle root with the new hash values.
+    ///
+    /// ```
+    /// use sha3::Sha3_256;
+    /// use hex_literal::hex;
+    ///
+    /// use merkle_lite::MerkleTree;
+    ///
+    /// // create tree with the dummy leaves first.
+    /// let leaves = [[0u8; 32]; 14];
+    /// let mut tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+    /// {
+    ///     let leaf_len = tree.leaf_len();
+    ///     let mut leaves = tree.get_leaves_mut();
+    ///
+    ///     // sets the leaves with the new hash and update
+    ///     // the Merkle root when it drops.
+    ///     (0..leaf_len).for_each(|i| {
+    ///         leaves[i] = [0xab_u8; 32].into();
+    ///     });
+    /// }
+    /// assert_eq!(
+    ///     tree.root(),
+    ///     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
+    /// );
+    /// ```
+    pub fn get_leaves_mut(&mut self) -> MerkleLeavesMut<B> {
+        MerkleLeavesMut {
+            change_set: BTreeSet::default(),
+            tree: self,
+        }
+    }
+
     fn with_leaf_len(leaf_len: usize) -> Self {
         let capacity = match leaf_len.count_ones() {
             0 => 0,
@@ -286,11 +328,85 @@ where
     }
 
     #[inline]
-    fn merkle_root_iter(&mut self, child_range: Range<usize>) -> MerkleRootIter<B> {
+    fn merkle_root_iter(&mut self, updated_leaf_range: Range<usize>) -> MerkleRootIter<B> {
         MerkleRootIter {
-            data: &mut self.data[..child_range.end],
-            child_range,
+            data: &mut self.data[..updated_leaf_range.end],
+            level_range: self.leaf_range.clone().into(),
+            updated_range: updated_leaf_range.into(),
         }
+    }
+}
+
+/// Mutable Merkle tree leaves
+///
+/// It accumulates the changes and triggers the Merkle root calculation
+/// when it drops.
+///
+/// Please refer to [`MerkleRoot::get_leaves_mut()`] for more detail.
+///
+/// [`merkleroot::get_leaves_mut()`]: struct.MerkleTree.html#method.get_leaves_mut
+#[derive(Debug)]
+pub struct MerkleLeavesMut<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    /// mutated leaves.
+    change_set: BTreeSet<usize>,
+
+    /// mutable reference to the tree for the merkle root calculation.
+    tree: &'a mut MerkleTree<B>,
+}
+
+impl<'a, B> Index<usize> for MerkleLeavesMut<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    type Output = digest::Output<B>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        let index = self.tree.leaf_range.start + index;
+        self.tree.data[index].0.as_ref().unwrap()
+    }
+}
+
+impl<'a, B> IndexMut<usize> for MerkleLeavesMut<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let index = self.tree.leaf_range.start + index;
+        self.change_set.insert(index);
+        self.tree.data[index].0.as_mut().unwrap()
+    }
+}
+
+impl<'a, B> Drop for MerkleLeavesMut<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    /// Calculate the Merkle root in case there is a change.
+    fn drop(&mut self) {
+        // do nothing in case of no change.
+        if self.change_set.is_empty() {
+            return;
+        }
+        // get the range of the change set.
+        let start = match self.change_set.first() {
+            Some(&start) if start & 0b1 != 0b1 => start - 1,
+            Some(&start) => start,
+            None => return,
+        };
+        let end = match self.change_set.last() {
+            Some(&end) if end & 0b1 != 0b1 => end + 1,
+            Some(&end) => end,
+            None => return,
+        };
+        // calculate the Merkle root.
+        for _ in self.tree.merkle_root_iter(start..end) {}
     }
 }
 
@@ -302,8 +418,11 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// represents the range of the child node in `data`.
-    child_range: Range<usize>,
+    /// represents the range of the current level.
+    level_range: LevelRange,
+
+    /// represents the range of the updated child node.
+    updated_range: LevelRange,
 
     /// borrowed reference to the `MerkleTree::data`.
     data: &'a mut [Node<B>],
@@ -314,44 +433,49 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    type Item = Range<usize>;
+    type Item = LevelRange;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Calculated the merkle root.
         if self.data.len() <= 1 {
             return None;
         }
 
-        // Calculates the parent digests.
-        let Range { start, end } = self.child_range;
-        let parent_range = (start - 1) >> 1..(end - 1) >> 1;
-        let (parents, children) = mem::take(&mut self.data).split_at_mut(start);
+        // calculates the parent hash.
+        let split = self.updated_range.0.start;
+        let parent_range = self.updated_range.next().unwrap();
+        let (parents, children) = mem::take(&mut self.data).split_at_mut(split);
         for (i, pair) in children.chunks(2).enumerate() {
             let mut hasher = B::new();
             for child in pair {
                 hasher.update(child);
             }
-            parents[parent_range.start + i] = Node::from(hasher.finalize());
+            parents[parent_range.0.start + i] = Node::from(hasher.finalize());
         }
 
-        // adjust the start and the end for the next iteration.
-        let Range { start, end } = parent_range;
+        // adjust the next child range.
+        let Range { start, end } = parent_range.0;
         let next_start = if start != 0 && start & 1 == 0 {
             start - 1
         } else {
             start
         };
-        let next_end = if end & 1 == 0 {
-            // copy the sibling's digest in case of it's not set yet.
-            if parents[end].0.is_none() {
+
+        // make sure the updated node is even.
+        self.level_range.next().unwrap();
+        let next_end = if end & 0b1 == 0b0 {
+            if end >= self.level_range.0.end {
+                // Copy the last element in case it's out of
+                // level range.
                 parents[end] = parents[end - 1].clone();
             }
             end + 1
         } else {
             end
         };
-        self.child_range = next_start..next_end;
+
+        // prepare the state for the next iteration.
         self.data = &mut parents[..next_end];
+        self.updated_range = (next_start..next_end).into();
 
         Some(parent_range)
     }
@@ -421,5 +545,34 @@ where
             return Err(block_buffer::Error);
         }
         Ok(Self(Some(digest::Output::<B>::clone_from_slice(from))))
+    }
+}
+
+/// A tree level range.
+#[derive(Clone, Debug)]
+struct LevelRange(Range<usize>);
+
+impl From<Range<usize>> for LevelRange {
+    fn from(range: Range<usize>) -> Self {
+        Self(range)
+    }
+}
+
+impl From<LevelRange> for Range<usize> {
+    fn from(range: LevelRange) -> Self {
+        range.0
+    }
+}
+
+impl Iterator for LevelRange {
+    type Item = Self;
+
+    fn next(&mut self) -> Option<Self> {
+        if self.0.start == self.0.end {
+            return None;
+        }
+        self.0.start = (self.0.start - 1) >> 0b1;
+        self.0.end = (self.0.end - 1) >> 0b1;
+        Some(self.clone())
     }
 }

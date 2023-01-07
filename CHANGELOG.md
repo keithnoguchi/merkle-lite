@@ -1,5 +1,7 @@
 # Version 0.0.6
 
+- MerkleTree::get_leaves_mut() to update leaves and
+  Merkle root.
 - Fix the CI link in README.md.
 
 # Version 0.0.5
