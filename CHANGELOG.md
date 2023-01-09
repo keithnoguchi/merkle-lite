@@ -1,3 +1,7 @@
+# Version 0.0.7
+
+- MerkleTree::proof() method to create a MerkleProof.
+
 # Version 0.0.6
 
 - MerkleTree::get_leaves_mut() to update leaves and

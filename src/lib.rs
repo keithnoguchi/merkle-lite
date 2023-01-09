@@ -1,7 +1,6 @@
 //! Generic Binary Merkle Tree
 //!
-//! A simple, fast, and ergonomic generic binary [Merkle Tree] for
-//! [Rust Crypto] hash functions.
+//! A simple, fast, and composable [Merkle Tree] for [Rust Crypto] hash functions.
 //!
 //! # Examples
 //!
@@ -15,10 +14,11 @@
 //!
 //! use merkle_lite::MerkleTree;
 //!
-//! // 13 identical leaves for the demonstration purpose.
-//! let hashes = [[0xab_u8; 32]; 13];
-//! let tree: MerkleTree<Sha3_256> = hashes.iter().collect();
+//! // odd number of `sha3::Sha3_256` leaves.
+//! let hashed_leaves = [[0xab_u8; 32]; 13];
+//! let tree: MerkleTree<Sha3_256> = hashed_leaves.iter().collect();
 //!
+//! // check the Merkle root.
 //! assert_eq!(
 //!     tree.root(),
 //!     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),

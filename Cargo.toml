@@ -2,7 +2,7 @@
 name = "merkle-lite"
 # When publishing a new version:
 # - Update CHANGELOG.md
-version = "0.0.6"
+version = "0.0.7"
 edition = "2021"
 rust-version = "1.66"
 authors = ["Keith Noguchi <keith@noguchi.us>"]
@@ -11,7 +11,7 @@ readme = "README.md"
 repository = "https://github.com/keithnoguchi/merkle-lite"
 keywords = ["crypto", "hash", "merkle", "merkle-tree", "no-std"]
 categories = ["data-structures", "cryptography", "no-std"]
-description = "Generic Binary Merkle Tree for Rust Crypto hash functions"
+description = "A simple, fast, composable Merkle tree for Rust Crypto hash functions"
 
 [dependencies]
 digest = "0.10.6"
