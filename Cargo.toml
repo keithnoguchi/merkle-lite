@@ -11,7 +11,7 @@ readme = "README.md"
 repository = "https://github.com/keithnoguchi/merkle-lite"
 keywords = ["crypto", "hash", "merkle", "merkle-tree", "no-std"]
 categories = ["data-structures", "cryptography", "no-std"]
-description = "A simple, fast, composable Merkle tree for Rust Crypto hash functions"
+description = "A simple, fast, and composable binary Merkle tree and proof for Rust Crypto hash functions"
 
 [dependencies]
 digest = "0.10.6"
@@ -19,6 +19,7 @@ digest = "0.10.6"
 [dev-dependencies]
 bencher = "0.1.5"
 hex-literal = "0.3.4"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
 sha2 = "0.10.6"
 sha3 = "0.10.6"
 

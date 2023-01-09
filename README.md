@@ -9,26 +9,41 @@ https://crates.io/crates/merkle-lite)
 [![Documentation](https://docs.rs/merkle-lite/badge.svg)](
 https://docs.rs/merkle-lite)
 
-A simple, fast, and composable [Merkle Tree] for [Rust Crypto] hash functions.
+A simple, fast, and composable binary [Merkle tree and proof]
+for [Rust Crypto] hash functions.
 
 ## Examples
 
-Here is how to create `MerkleTree` and the Markle Root
+Here is how to create `MerkleTree` and `MerkleProof`
 for the ordered array of cryptographic hashes:
 ```
+use rand_core::RngCore;
 use sha3::Sha3_256;
-use hex_literal::hex;
 
 use merkle_lite::MerkleTree;
 
-// odd number of `sha3::Sha3_256` leaves.
-let hashed_leaves = [[0xab_u8; 32]; 13];
-let tree: MerkleTree<Sha3_256> = hashed_leaves.iter().collect();
+// 100 random leaves.
+let leaves: Vec<_> = std::iter::repeat([0u8; 32])
+    .map(|mut leaf| {
+        rand_core::OsRng.fill_bytes(&mut leaf);
+        leaf
+    })
+    .take(100)
+    .collect();
 
-// check the Merkle root.
+// A Merkle tree composed from the leaves.
+let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+
+// A proof of inclusion for an arbitrary number of leaves
+// specified by the 0-indexed ordered indices.
+let proof = tree.proof(&[12, 98]).unwrap();
+
+// verify the merkle proof of inclusion by comparing the
+// result to the Merkle root.
+let inclusion = vec![(98, &leaves[98]), (12, &leaves[12])];
 assert_eq!(
+    proof.verify(&inclusion).unwrap().as_ref(),
     tree.root(),
-    hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
 );
 ```
 
@@ -47,5 +62,5 @@ Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
-[merkle tree]: https://en.wikipedia.org/wiki/Merkle_tree
+[merkle tree and proof]: https://en.wikipedia.org/wiki/Merkle_tree
 [rust crypto]: https://github.com/RustCrypto

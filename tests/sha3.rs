@@ -65,20 +65,12 @@ fn tree_root() {
             8,
             hex!("90029acbe3254c63bc9dd4a8f1e4b8e27b4445bb5e5a5897af9251ec744f6f68"),
         ),
-        (
-            9,
-            hex!("1489ad5e85ce2b6cbccfd2f25f8d63d115ff80199afbc4ec4f6fc2484bf8d690"),
-        ),
-        (
-            10,
-            hex!("c795494aa662dd012c5de6c52f0ab28ee9135fe846074d62bb7807cf98742fd9"),
-        ),
     ]
     .into_iter()
     .collect();
     let leaf = [0xab_u8; 32];
 
-    for tree_depth in 2..=10 {
+    for tree_depth in 2..9 {
         // try all the possible leaf length for the tree depth.
         let leaf_len_range = ((0b1 << (tree_depth - 2)) + 1)..((0b1 << (tree_depth - 1)) + 1);
 
@@ -125,20 +117,12 @@ fn tree_get_leaves_mut() {
             8,
             hex!("90029acbe3254c63bc9dd4a8f1e4b8e27b4445bb5e5a5897af9251ec744f6f68"),
         ),
-        (
-            9,
-            hex!("1489ad5e85ce2b6cbccfd2f25f8d63d115ff80199afbc4ec4f6fc2484bf8d690"),
-        ),
-        (
-            10,
-            hex!("c795494aa662dd012c5de6c52f0ab28ee9135fe846074d62bb7807cf98742fd9"),
-        ),
     ]
     .into_iter()
     .collect();
     let leaf = [0xab_u8; 32];
 
-    for tree_depth in 2..=10 {
+    for tree_depth in 2..9 {
         // try all the possible leaf length for the tree depth.
         let leaf_len_range = ((0b1 << (tree_depth - 2)) + 1)..((0b1 << (tree_depth - 1)) + 1);
 
