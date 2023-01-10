@@ -2,7 +2,7 @@
 name = "merkle-lite"
 # When publishing a new version:
 # - Update CHANGELOG.md
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 rust-version = "1.66"
 authors = ["Keith Noguchi <keith@noguchi.us>"]
@@ -24,9 +24,13 @@ sha2 = "0.10.6"
 sha3 = "0.10.6"
 
 [[bench]]
-name = "sha2"
+name = "tree_from_iter"
 harness = false
 
 [[bench]]
-name = "sha3"
+name = "tree_proof"
+harness = false
+
+[[bench]]
+name = "proof_verify"
 harness = false
