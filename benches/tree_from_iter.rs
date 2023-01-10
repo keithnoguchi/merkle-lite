@@ -47,6 +47,9 @@ where
 
     b.iter(|| {
         // compose the Merkle tree from the leaves.
-        let _tree = MerkleTree::<B>::from_iter(leaves.iter());
+        assert_eq!(
+            MerkleTree::<B>::from_iter(leaves.iter()).leaf_len(),
+            NR_LEAVES
+        );
     })
 }

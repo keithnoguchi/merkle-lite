@@ -53,6 +53,6 @@ where
 
     b.iter(|| {
         // get the Merkle proof.
-        let _proof = tree.proof(&proof_leaf_indices).unwrap();
+        assert!(tree.proof(&proof_leaf_indices).is_some());
     })
 }

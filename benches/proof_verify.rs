@@ -57,10 +57,10 @@ where
 
     b.iter(|| {
         // verify the Merkle root for the proof of inclusion.
-        let _root = tree
+        assert!(tree
             .proof(&proof_leaf_indices)
             .unwrap()
             .verify(&proof_leaf_hashes)
-            .unwrap();
+            .is_some());
     })
 }
