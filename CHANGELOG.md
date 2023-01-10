@@ -1,3 +1,7 @@
+# Version 0.0.8
+
+- Benchmark MerkleTree::proof() and MerkleProof::verify().
+
 # Version 0.0.7
 
 - MerkleTree::proof() method to create a MerkleProof.
