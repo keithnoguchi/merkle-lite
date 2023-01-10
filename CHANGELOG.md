@@ -1,3 +1,8 @@
+# Version 0.0.7
+
+- MerkleTree::proof() method to create a MerkleProof.
+- MerkleProof::verify() to verify the proof of inclusion.
+
 # Version 0.0.6
 
 - MerkleTree::get_leaves_mut() to update leaves and
