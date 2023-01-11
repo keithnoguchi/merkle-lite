@@ -4,6 +4,8 @@ Use NodeIndex through out the code to consolidate the node
 index operation:
 
 - Define NodeIndexRange, aka LevelRange, as Range<NodeIndex>
+- Use the NodeIndexRange for MerkleProof
+- Use the NodeIndexRange for MerkleTree
 
 # Version 0.0.8
 

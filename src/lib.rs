@@ -92,10 +92,10 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// represents the range of the leaf nodes in `data`.
-    leaf_range: Range<usize>,
+    /// Provides the range of the leaf node in `data`.
+    leaf_range: NodeIndexRange,
 
-    /// points to the contiguous memory of the array of hash.
+    /// Points to the contiguous memory of array of `data`, e.g. hash value.
     data: Vec<NodeData<B>>,
 }
 
@@ -126,14 +126,14 @@ where
             tree.push(data);
         });
 
-        // nothing to do in case of the lone leaf.
-        if tree.leaf_len() == 1 {
+        // nothing to do in case of the zero or single leaf tree.
+        if tree.leaf_range.len() <= 1 {
             return tree;
         }
 
         // make it even leaves.
-        if tree.leaf_len() & 0b1 == 0b1 {
-            tree.push(tree.data[tree.leaf_range.end - 1].clone());
+        if tree.leaf_range.is_odd_len() {
+            tree.push(tree.data[tree.leaf_range.end() - 1].clone());
         }
 
         // calculate the Merkle root.
@@ -205,12 +205,12 @@ where
     /// assert_eq!(tree.leaf_len(), 100);
     /// ```
     pub const fn leaf_len(&self) -> usize {
-        self.leaf_range.end - self.leaf_range.start
+        self.leaf_range.len()
     }
 
     /// Returns the total number of leaf node without reallocating.
     pub fn leaf_capacity(&self) -> usize {
-        self.data.capacity() - self.leaf_range.start
+        self.data.capacity() - self.leaf_range.start()
     }
 
     /// Returns the Merkle root.
@@ -268,7 +268,7 @@ where
     /// }
     /// ```
     pub fn leaves(&self) -> impl Iterator<Item = &[u8]> {
-        self.data[self.leaf_range.clone()]
+        self.data[self.leaf_range.start()..self.leaf_range.end()]
             .iter()
             .map(|n| n.as_ref())
     }
@@ -355,9 +355,8 @@ where
         // sanity check of the leaf indices.
         let leaf_indices: BTreeSet<_> = leaf_indices
             .into_iter()
-            .map(|index| self.leaf_range.start + *index)
-            .filter(|index| self.leaf_range.contains(index))
-            .map(NodeIndex)
+            .map(|index| NodeIndex(self.leaf_range.start() + *index))
+            .filter(|index| self.leaf_range.0.contains(index))
             .collect();
 
         // no valid leaf indices.
@@ -367,7 +366,7 @@ where
 
         // get the lemmas for each level all the way to the root.
         let mut proof = MerkleProof {
-            leaf_range: self.leaf_range.clone().into(),
+            leaf_range: self.leaf_range.clone(),
             leaf_indices: leaf_indices.clone(),
             lemmas: Vec::new(),
         };
@@ -379,7 +378,7 @@ where
     }
 
     fn with_leaf_len(leaf_len: usize) -> Self {
-        let capacity = match leaf_len.count_ones() {
+        let total_len = match leaf_len.count_ones() {
             0 => 0,
             1 => {
                 // power of two leaves.
@@ -397,28 +396,28 @@ where
                 (2 * base - 1) + leaf_len
             }
         };
-        let start = capacity - leaf_len;
+        let start = total_len - leaf_len;
         Self {
-            data: vec![NodeData::default(); capacity],
-            leaf_range: start..start,
+            data: vec![NodeData::default(); total_len],
+            leaf_range: (start..start).into(),
         }
     }
 
     #[inline]
     fn push(&mut self, data: NodeData<B>) {
-        if self.leaf_range.end < self.data.len() {
-            self.data[self.leaf_range.end] = data;
+        if self.leaf_range.end() < self.data.len() {
+            self.data[self.leaf_range.end()] = data;
         } else {
             self.data.push(data);
         }
-        self.leaf_range.end += 1;
+        *self.leaf_range.end_mut() += 1;
     }
 
-    fn merkle_root_iter(&mut self, updated_leaf_range: Range<usize>) -> MerkleRootIter<B> {
+    fn merkle_root_iter(&mut self, updated_leaf_range: NodeIndexRange) -> MerkleRootIter<B> {
         MerkleRootIter {
-            data: &mut self.data[..updated_leaf_range.end],
-            level_range: self.leaf_range.clone().into(),
-            updated_range: updated_leaf_range.into(),
+            data: &mut self.data[..updated_leaf_range.end()],
+            level_range: self.leaf_range.clone(),
+            updated_range: updated_leaf_range,
         }
     }
 
@@ -459,7 +458,7 @@ where
     type Output = digest::Output<B>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        let index = self.tree.leaf_range.start + index;
+        let index = self.tree.leaf_range.start() + index;
         self.tree.data[index].0.as_ref().unwrap()
     }
 }
@@ -470,7 +469,7 @@ where
     Buffer<B>: Copy,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let index = self.tree.leaf_range.start + index;
+        let index = self.tree.leaf_range.start() + index;
         self.change_set.insert(index);
         self.tree.data[index].0.as_mut().unwrap()
     }
@@ -481,7 +480,7 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// Calculate the Merkle root in case there is a change.
+    /// Calculates the Merkle root in case there is a change in the leaves.
     fn drop(&mut self) {
         // do nothing in case of no change.
         if self.change_set.is_empty() {
@@ -499,7 +498,7 @@ where
             None => return,
         };
         // calculate the Merkle root.
-        for _ in self.tree.merkle_root_iter(start..end) {}
+        for _ in self.tree.merkle_root_iter((start..end).into()) {}
     }
 }
 
@@ -881,12 +880,6 @@ impl NodeIndexRange {
         self.len() & 0b1 == 0b1
     }
 
-    /// Returns `true` if the range is even length.
-    #[inline]
-    const fn is_even_len(&self) -> bool {
-        !self.is_odd_len()
-    }
-
     /// Returns the `start` of the range in `usize`.
     #[inline]
     const fn start(&self) -> usize {
@@ -897,6 +890,11 @@ impl NodeIndexRange {
     #[inline]
     const fn end(&self) -> usize {
         self.0.end.0
+    }
+
+    /// Returns mutable `end` value.
+    fn end_mut(&mut self) -> &mut usize {
+        &mut self.0.end.0
     }
 }
 
