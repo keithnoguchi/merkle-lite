@@ -55,7 +55,7 @@ extern crate alloc;
 
 use core::fmt::Debug;
 use core::mem;
-use core::ops::{Index, IndexMut, Range};
+use core::ops::{Add, Index, IndexMut, Range, Sub};
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::{vec, vec::Vec};
@@ -309,7 +309,7 @@ where
     /// ```
     pub fn get_leaves_mut(&mut self) -> MerkleLeavesMut<B> {
         MerkleLeavesMut {
-            change_set: BTreeSet::default(),
+            mutated_set: BTreeSet::default(),
             tree: self,
         }
     }
@@ -444,7 +444,7 @@ where
     Buffer<B>: Copy,
 {
     /// mutated leaves.
-    change_set: BTreeSet<usize>,
+    mutated_set: BTreeSet<NodeIndex>,
 
     /// mutable reference to the tree for the merkle root calculation.
     tree: &'a mut MerkleTree<B>,
@@ -470,7 +470,7 @@ where
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let index = self.tree.leaf_range.start() + index;
-        self.change_set.insert(index);
+        self.mutated_set.insert(NodeIndex(index));
         self.tree.data[index].0.as_mut().unwrap()
     }
 }
@@ -483,22 +483,22 @@ where
     /// Calculates the Merkle root in case there is a change in the leaves.
     fn drop(&mut self) {
         // do nothing in case of no change.
-        if self.change_set.is_empty() {
+        if self.mutated_set.is_empty() {
             return;
         }
         // get the range of the change set.
-        let start = match self.change_set.first() {
-            Some(&start) if start & 0b1 != 0b1 => start - 1,
+        let start = match self.mutated_set.first() {
+            Some(&start) if start.is_even() => start - 1,
             Some(&start) => start,
             None => return,
         };
-        let end = match self.change_set.last() {
-            Some(&end) if end & 0b1 != 0b1 => end + 1,
+        let end = match self.mutated_set.last() {
+            Some(&end) if end.is_even() => end + 1,
             Some(&end) => end,
             None => return,
         };
         // calculate the Merkle root.
-        for _ in self.tree.merkle_root_iter((start..end).into()) {}
+        for _ in self.tree.merkle_root_iter(NodeIndexRange(start..end)) {}
     }
 }
 
@@ -795,28 +795,28 @@ where
 
         // adjust the next child range.
         let Range { start, end } = parent_range.0;
-        let next_start = if !start.is_root() && start.is_even() {
-            NodeIndex(start.0 - 1)
+        let start = if !start.is_root() && start.is_even() {
+            start - 1
         } else {
             start
         };
 
         // make sure the updated node is even.
         self.level_range.next().unwrap();
-        let next_end = if end.is_even() {
+        let end = if end.is_even() {
             if end >= self.level_range.0.end {
                 // Copy the last element in case it's out of
                 // level range.
                 parents[end.0] = parents[end.0 - 1].clone();
             }
-            NodeIndex(end.0 + 1)
+            end + 1
         } else {
             end
         };
 
         // prepare the state for the next iteration.
-        self.data = &mut parents[..next_end.0];
-        self.updated_range = (next_start.0..next_end.0).into();
+        self.data = &mut parents[..end.0];
+        self.updated_range = NodeIndexRange(start..end);
 
         Some(parent_range)
     }
@@ -905,6 +905,22 @@ struct NodeIndex(usize);
 impl From<NodeIndex> for usize {
     fn from(index: NodeIndex) -> usize {
         index.0
+    }
+}
+
+impl Add<usize> for NodeIndex {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self {
+        Self(self.0 + rhs)
+    }
+}
+
+impl Sub<usize> for NodeIndex {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self {
+        Self(self.0 - rhs)
     }
 }
 
