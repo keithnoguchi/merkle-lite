@@ -1,3 +1,10 @@
+# Version 0.0.9
+
+Use NodeIndex through out the code to consolidate the node
+index operation:
+
+- Define NodeIndexRange, aka LevelRange, as Range<NodeIndex>
+
 # Version 0.0.8
 
 - Benchmark MerkleTree::proof() and MerkleProof::verify().

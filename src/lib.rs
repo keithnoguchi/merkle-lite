@@ -757,10 +757,10 @@ where
     Buffer<B>: Copy,
 {
     /// represents the range of the current level.
-    level_range: LevelRange,
+    level_range: NodeIndexRange,
 
     /// represents the range of the updated child node.
-    updated_range: LevelRange,
+    updated_range: NodeIndexRange,
 
     /// borrowed reference to the `MerkleTree::data`.
     data: &'a mut [NodeData<B>],
@@ -771,7 +771,7 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    type Item = LevelRange;
+    type Item = NodeIndexRange;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.data.len() <= 1 {
@@ -779,7 +779,7 @@ where
         }
 
         // calculates the parent hash.
-        let split = self.updated_range.0.start;
+        let split = self.updated_range.start();
         let parent_range = self.updated_range.next().unwrap();
         let (parents, children) = mem::take(&mut self.data).split_at_mut(split);
         for (i, pair) in children.chunks(2).enumerate() {
@@ -787,63 +787,78 @@ where
             for child in pair {
                 hasher.update(child);
             }
-            parents[parent_range.0.start + i] = NodeData::from(hasher.finalize());
+            parents[parent_range.start() + i] = NodeData::from(hasher.finalize());
         }
 
         // adjust the next child range.
         let Range { start, end } = parent_range.0;
-        let next_start = if start != 0 && start & 1 == 0 {
-            start - 1
+        let next_start = if !start.is_root() && start.is_even() {
+            NodeIndex(start.0 - 1)
         } else {
             start
         };
 
         // make sure the updated node is even.
         self.level_range.next().unwrap();
-        let next_end = if end & 0b1 == 0b0 {
+        let next_end = if end.is_even() {
             if end >= self.level_range.0.end {
                 // Copy the last element in case it's out of
                 // level range.
-                parents[end] = parents[end - 1].clone();
+                parents[end.0] = parents[end.0 - 1].clone();
             }
-            end + 1
+            NodeIndex(end.0 + 1)
         } else {
             end
         };
 
         // prepare the state for the next iteration.
-        self.data = &mut parents[..next_end];
-        self.updated_range = (next_start..next_end).into();
+        self.data = &mut parents[..next_end.0];
+        self.updated_range = (next_start.0..next_end.0).into();
 
         Some(parent_range)
     }
 }
 
-/// A tree level range.
+/// A tree node index range.
 #[derive(Clone, Debug)]
-struct LevelRange(Range<usize>);
+struct NodeIndexRange(Range<NodeIndex>);
 
-impl From<Range<usize>> for LevelRange {
+impl NodeIndexRange {
+    /// Returns the `start` of the range in `usize`.
+    #[inline]
+    fn start(&self) -> usize {
+        self.0.start.into()
+    }
+}
+
+impl From<Range<usize>> for NodeIndexRange {
     fn from(range: Range<usize>) -> Self {
-        Self(range)
+        Self(Range {
+            start: NodeIndex(range.start),
+            end: NodeIndex(range.end),
+        })
     }
 }
 
-impl From<LevelRange> for Range<usize> {
-    fn from(range: LevelRange) -> Self {
-        range.0
+impl From<NodeIndexRange> for Range<usize> {
+    fn from(range: NodeIndexRange) -> Self {
+        Range {
+            start: range.0.start.into(),
+            end: range.0.end.into(),
+        }
     }
 }
 
-impl Iterator for LevelRange {
+impl Iterator for NodeIndexRange {
     type Item = Self;
 
+    /// Returns the next up of the tree node index range.
     fn next(&mut self) -> Option<Self> {
         if self.0.start == self.0.end {
             return None;
         }
-        self.0.start = (self.0.start - 1) >> 0b1;
-        self.0.end = (self.0.end - 1) >> 0b1;
+        self.0.start = self.0.start.parent().unwrap();
+        self.0.end = self.0.end.parent().unwrap();
         Some(self.clone())
     }
 }
@@ -851,6 +866,12 @@ impl Iterator for LevelRange {
 /// A tree node index.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 struct NodeIndex(usize);
+
+impl From<NodeIndex> for usize {
+    fn from(index: NodeIndex) -> usize {
+        index.0
+    }
+}
 
 impl NodeIndex {
     const ROOT: Self = Self(0);
@@ -865,6 +886,12 @@ impl NodeIndex {
     #[inline]
     fn is_odd(&self) -> bool {
         (self.0 & 0b1) == 0b1
+    }
+
+    /// Returns `true` if it's an even index.
+    #[inline]
+    fn is_even(&self) -> bool {
+        !self.is_odd()
     }
 
     /// Returns the parent index or `None`.
