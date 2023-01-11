@@ -53,11 +53,12 @@
 
 extern crate alloc;
 
-use alloc::collections::{BTreeMap, BTreeSet};
-use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 use core::mem;
 use core::ops::{Index, IndexMut, Range};
+
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{vec, vec::Vec};
 
 use digest::block_buffer;
 use digest::generic_array::ArrayLength;
@@ -91,7 +92,7 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// represents the range of the valid leaves in `data`.
+    /// represents the range of the leaf nodes in `data`.
     leaf_range: Range<usize>,
 
     /// points to the contiguous memory of the array of hash.
@@ -366,7 +367,7 @@ where
 
         // get the lemmas for each level all the way to the root.
         let mut proof = MerkleProof {
-            leaf_range: self.leaf_range.clone(),
+            leaf_range: self.leaf_range.clone().into(),
             leaf_indices: leaf_indices.clone(),
             lemmas: Vec::new(),
         };
@@ -516,7 +517,7 @@ where
     Buffer<B>: Copy,
 {
     /// the range of the Merkle tree leaves.
-    leaf_range: Range<usize>,
+    leaf_range: NodeIndexRange,
 
     /// the indices of the Merkle proof verification.
     leaf_indices: BTreeSet<NodeIndex>,
@@ -581,7 +582,7 @@ where
                     v.as_ref().len() == <B as Digest>::output_size(),
                     "invalid hash length"
                 );
-                let index = NodeIndex(self.leaf_range.start + *k);
+                let index = NodeIndex(self.leaf_range.start() + *k);
                 let data = NodeData::<B>::try_from(v.as_ref()).unwrap();
                 (index, data)
             })
@@ -774,20 +775,23 @@ where
     type Item = NodeIndexRange;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data.len() <= 1 {
+        // less than 1 represents the completion of the root hash
+        // and end of the iteration.
+        if self.updated_range.len() <= 1 {
             return None;
         }
 
         // calculates the parent hash.
         let split = self.updated_range.start();
         let parent_range = self.updated_range.next().unwrap();
+        let parent_base = parent_range.start();
         let (parents, children) = mem::take(&mut self.data).split_at_mut(split);
         for (i, pair) in children.chunks(2).enumerate() {
             let mut hasher = B::new();
             for child in pair {
                 hasher.update(child);
             }
-            parents[parent_range.start() + i] = NodeData::from(hasher.finalize());
+            parents[parent_base + i] = NodeData::from(hasher.finalize());
         }
 
         // adjust the next child range.
@@ -820,14 +824,23 @@ where
 }
 
 /// A tree node index range.
+///
+/// It's an iterable value and gives the way to move the tree level
+/// up to the the zero length range.
 #[derive(Clone, Debug)]
 struct NodeIndexRange(Range<NodeIndex>);
 
-impl NodeIndexRange {
-    /// Returns the `start` of the range in `usize`.
-    #[inline]
-    fn start(&self) -> usize {
-        self.0.start.into()
+impl Iterator for NodeIndexRange {
+    type Item = Self;
+
+    /// Returns the next up of the tree node index range.
+    fn next(&mut self) -> Option<Self> {
+        if self.is_empty() {
+            return None;
+        }
+        self.0.start = self.0.start.parent().unwrap();
+        self.0.end = self.0.end.parent().unwrap();
+        Some(self.clone())
     }
 }
 
@@ -849,17 +862,41 @@ impl From<NodeIndexRange> for Range<usize> {
     }
 }
 
-impl Iterator for NodeIndexRange {
-    type Item = Self;
+impl NodeIndexRange {
+    /// Returns the length of the range.
+    #[inline]
+    const fn len(&self) -> usize {
+        self.end() - self.start()
+    }
 
-    /// Returns the next up of the tree node index range.
-    fn next(&mut self) -> Option<Self> {
-        if self.0.start == self.0.end {
-            return None;
-        }
-        self.0.start = self.0.start.parent().unwrap();
-        self.0.end = self.0.end.parent().unwrap();
-        Some(self.clone())
+    /// Returns `true` if the length of the range is zero.
+    #[inline]
+    const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns `true` if the range is odd length.
+    #[inline]
+    const fn is_odd_len(&self) -> bool {
+        self.len() & 0b1 == 0b1
+    }
+
+    /// Returns `true` if the range is even length.
+    #[inline]
+    const fn is_even_len(&self) -> bool {
+        !self.is_odd_len()
+    }
+
+    /// Returns the `start` of the range in `usize`.
+    #[inline]
+    const fn start(&self) -> usize {
+        self.0.start.0
+    }
+
+    /// Returns the `end` of the range in `usize`.
+    #[inline]
+    const fn end(&self) -> usize {
+        self.0.end.0
     }
 }
 
