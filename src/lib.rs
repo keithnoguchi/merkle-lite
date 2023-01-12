@@ -55,7 +55,7 @@ extern crate alloc;
 
 use core::fmt::Debug;
 use core::mem;
-use core::ops::{Add, Index, IndexMut, Range, Sub};
+use core::ops::{Add, AddAssign, Index, IndexMut, Sub};
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::{vec, vec::Vec};
@@ -133,7 +133,7 @@ where
 
         // make it even leaves.
         if tree.leaf_range.is_odd_len() {
-            tree.push(tree.data[tree.leaf_range.end() - 1].clone());
+            tree.push(tree.data[tree.leaf_range.end().index() - 1].clone());
         }
 
         // calculate the Merkle root.
@@ -210,7 +210,7 @@ where
 
     /// Returns the total number of leaf node without reallocating.
     pub fn leaf_capacity(&self) -> usize {
-        self.data.capacity() - self.leaf_range.start()
+        self.data.capacity() - self.leaf_range.start().index()
     }
 
     /// Returns the Merkle root.
@@ -268,7 +268,7 @@ where
     /// }
     /// ```
     pub fn leaves(&self) -> impl Iterator<Item = &[u8]> {
-        self.data[self.leaf_range.start()..self.leaf_range.end()]
+        self.data[self.leaf_range.as_range_usize()]
             .iter()
             .map(|n| n.as_ref())
     }
@@ -355,7 +355,7 @@ where
         // sanity check of the leaf indices.
         let leaf_indices: BTreeSet<_> = leaf_indices
             .into_iter()
-            .map(|index| NodeIndex(self.leaf_range.start() + *index))
+            .map(|index| self.leaf_range.start() + *index)
             .filter(|index| self.leaf_range.0.contains(index))
             .collect();
 
@@ -399,14 +399,14 @@ where
         let start = total_len - leaf_len;
         Self {
             data: vec![NodeData::default(); total_len],
-            leaf_range: (start..start).into(),
+            leaf_range: NodeIndexRange::from(start..start),
         }
     }
 
     #[inline]
     fn push(&mut self, data: NodeData<B>) {
-        if self.leaf_range.end() < self.data.len() {
-            self.data[self.leaf_range.end()] = data;
+        if self.leaf_range.end().index() < self.data.len() {
+            self.data[self.leaf_range.end().index()] = data;
         } else {
             self.data.push(data);
         }
@@ -415,7 +415,7 @@ where
 
     fn merkle_root_iter(&mut self, updated_leaf_range: NodeIndexRange) -> MerkleRootIter<B> {
         MerkleRootIter {
-            data: &mut self.data[..updated_leaf_range.end()],
+            data: &mut self.data[..updated_leaf_range.end().index()],
             level_range: self.leaf_range.clone(),
             updated_range: updated_leaf_range,
         }
@@ -458,7 +458,7 @@ where
     type Output = digest::Output<B>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        let index = self.tree.leaf_range.start() + index;
+        let index = self.tree.leaf_range.start().index() + index;
         self.tree.data[index].0.as_ref().unwrap()
     }
 }
@@ -469,7 +469,7 @@ where
     Buffer<B>: Copy,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let index = self.tree.leaf_range.start() + index;
+        let index = self.tree.leaf_range.start().index() + index;
         self.mutated_set.insert(NodeIndex(index));
         self.tree.data[index].0.as_mut().unwrap()
     }
@@ -581,7 +581,7 @@ where
                     v.as_ref().len() == <B as Digest>::output_size(),
                     "invalid hash length"
                 );
-                let index = NodeIndex(self.leaf_range.start() + *k);
+                let index = self.leaf_range.start() + *k;
                 let data = NodeData::<B>::try_from(v.as_ref()).unwrap();
                 (index, data)
             })
@@ -781,9 +781,9 @@ where
         }
 
         // calculates the parent hash.
-        let split = self.updated_range.start();
+        let split = self.updated_range.start().index();
         let parent_range = self.updated_range.next().unwrap();
-        let parent_base = parent_range.start();
+        let parent_base = parent_range.start().index();
         let (parents, children) = mem::take(&mut self.data).split_at_mut(split);
         for (i, pair) in children.chunks(2).enumerate() {
             let mut hasher = B::new();
@@ -794,7 +794,7 @@ where
         }
 
         // adjust the next child range.
-        let Range { start, end } = parent_range.0;
+        let NodeIndexRange(core::ops::Range { start, end }) = parent_range;
         let start = if !start.is_root() && start.is_even() {
             start - 1
         } else {
@@ -804,7 +804,7 @@ where
         // make sure the updated node is even.
         self.level_range.next().unwrap();
         let end = if end.is_even() {
-            if end >= self.level_range.0.end {
+            if end >= self.level_range.end() {
                 // Copy the last element in case it's out of
                 // level range.
                 parents[end.0] = parents[end.0 - 1].clone();
@@ -827,7 +827,7 @@ where
 /// It's an iterable value and gives the way to move the tree level
 /// up to the the zero length range.
 #[derive(Clone, Debug)]
-struct NodeIndexRange(Range<NodeIndex>);
+struct NodeIndexRange(core::ops::Range<NodeIndex>);
 
 impl Iterator for NodeIndexRange {
     type Item = Self;
@@ -843,20 +843,20 @@ impl Iterator for NodeIndexRange {
     }
 }
 
-impl From<Range<usize>> for NodeIndexRange {
-    fn from(range: Range<usize>) -> Self {
-        Self(Range {
+impl From<core::ops::Range<usize>> for NodeIndexRange {
+    fn from(range: core::ops::Range<usize>) -> Self {
+        Self(core::ops::Range {
             start: NodeIndex(range.start),
             end: NodeIndex(range.end),
         })
     }
 }
 
-impl From<NodeIndexRange> for Range<usize> {
+impl From<NodeIndexRange> for core::ops::Range<usize> {
     fn from(range: NodeIndexRange) -> Self {
-        Range {
-            start: range.0.start.into(),
-            end: range.0.end.into(),
+        core::ops::Range {
+            start: range.0.start.index(),
+            end: range.0.end.index(),
         }
     }
 }
@@ -865,7 +865,7 @@ impl NodeIndexRange {
     /// Returns the length of the range.
     #[inline]
     const fn len(&self) -> usize {
-        self.end() - self.start()
+        self.0.end.index() - self.0.start.index()
     }
 
     /// Returns `true` if the length of the range is zero.
@@ -880,21 +880,28 @@ impl NodeIndexRange {
         self.len() & 0b1 == 0b1
     }
 
-    /// Returns the `start` of the range in `usize`.
+    /// Returns `start` value.
     #[inline]
-    const fn start(&self) -> usize {
-        self.0.start.0
+    const fn start(&self) -> NodeIndex {
+        self.0.start
     }
 
-    /// Returns the `end` of the range in `usize`.
+    /// Returns `end` value.
     #[inline]
-    const fn end(&self) -> usize {
-        self.0.end.0
+    const fn end(&self) -> NodeIndex {
+        self.0.end
     }
 
     /// Returns mutable `end` value.
-    fn end_mut(&mut self) -> &mut usize {
-        &mut self.0.end.0
+    #[inline]
+    fn end_mut(&mut self) -> &mut NodeIndex {
+        &mut self.0.end
+    }
+
+    /// Returns the `NodeIndexRange` in `Range<usize>`.
+    #[inline]
+    const fn as_range_usize(&self) -> core::ops::Range<usize> {
+        self.0.start.0..self.0.end.0
     }
 }
 
@@ -924,6 +931,12 @@ impl Sub<usize> for NodeIndex {
     }
 }
 
+impl AddAssign<usize> for NodeIndex {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs
+    }
+}
+
 impl NodeIndex {
     const ROOT: Self = Self(0);
 
@@ -935,13 +948,13 @@ impl NodeIndex {
 
     /// Returns `true` if it's an odd index.
     #[inline]
-    fn is_odd(&self) -> bool {
+    const fn is_odd(&self) -> bool {
         (self.0 & 0b1) == 0b1
     }
 
     /// Returns `true` if it's an even index.
     #[inline]
-    fn is_even(&self) -> bool {
+    const fn is_even(&self) -> bool {
         !self.is_odd()
     }
 
@@ -965,6 +978,14 @@ impl NodeIndex {
         } else {
             Some(Self(self.0 - 1))
         }
+    }
+
+    /// Returns `NodeIndex` in `usize`.
+    ///
+    /// This is usuful as the array index.
+    #[inline]
+    const fn index(&self) -> usize {
+        self.0
     }
 }
 

@@ -7,6 +7,7 @@ index operation:
 - Use NodeIndexRange in MerkleProof.
 - Use NodeIndexRange in MerkleTree.
 - Use NodeIndex in MerkleLeavesMut.
+- Add NodeIndex::index() for the array indexing.
 
 # Version 0.0.8
 
