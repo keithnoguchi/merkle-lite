@@ -1,3 +1,8 @@
+# Version 0.0.10
+
+- Converts the existing tests into macros to cover
+  multiple hashers.
+
 # Version 0.0.9
 
 Use NodeIndex through out the code to consolidate the node

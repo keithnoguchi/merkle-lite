@@ -213,6 +213,28 @@ where
         self.data.capacity() - self.leaf_range.start().index()
     }
 
+    /// Returns the Merkle tree depth.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    /// ```
+    /// use digest::generic_array::GenericArray;
+    /// use digest::typenum::U32;
+    ///
+    /// use sha3::Sha3_256;
+    ///
+    /// use merkle_lite::MerkleTree;
+    ///
+    /// let leaves = [GenericArray::<u8, U32>::default(); 14];
+    /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+    ///
+    /// assert_eq!(tree.depth(), 5);
+    /// ```
+    pub const fn depth(&self) -> usize {
+        (usize::BITS - self.leaf_range.end().index().leading_zeros()) as usize
+    }
+
     /// Returns the Merkle root.
     ///
     /// # Examples
@@ -488,7 +510,7 @@ where
         }
         // get the range of the change set.
         let start = match self.mutated_set.first() {
-            Some(&start) if start.is_even() => start - 1,
+            Some(&start) if !start.is_root() && start.is_even() => start - 1,
             Some(&start) => start,
             None => return,
         };
