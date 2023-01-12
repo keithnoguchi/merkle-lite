@@ -1,3 +1,14 @@
+# Version 0.0.9
+
+Use NodeIndex through out the code to consolidate the node
+index operation:
+
+- Define NodeIndexRange, aka LevelRange, as Range<NodeIndex>.
+- Use NodeIndexRange in MerkleProof.
+- Use NodeIndexRange in MerkleTree.
+- Use NodeIndex in MerkleLeavesMut.
+- Add NodeIndex::index() for the array indexing.
+
 # Version 0.0.8
 
 - Benchmark MerkleTree::proof() and MerkleProof::verify().
