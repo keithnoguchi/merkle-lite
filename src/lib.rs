@@ -1,9 +1,15 @@
 //! A binary Merkle tree and proof.
 //!
+//! [merkle tree and proof]: https://en.wikipedia.org/wiki/Merkle_tree
+//! [rust crypto]: https://github.com/RustCrypto
+//!
 //! A simple, fast, and composable binary [Merkle tree and proof] for
 //! [Rust Crypto] hash functions.
 //!
 //! # Examples
+//!
+//! [`merkletree`]: struct.MerkleTree.html
+//! [`merkleproof`]: struct.MerkleProof.html
 //!
 //! Here is how to compose [`MerkleTree`] and [`MerkleProof`] for the
 //! proof of inclusion verification:
@@ -14,8 +20,8 @@
 //!
 //! use merkle_lite::MerkleTree;
 //!
-//! // 100 random leaves.
-//! let leaves: Vec<_> = std::iter::repeat([0u8; 32])
+//! // Composes MerkleTree from the 100 random leaves.
+//! let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
 //!     .map(|mut leaf| {
 //!         rand_core::OsRng.fill_bytes(&mut leaf);
 //!         leaf
@@ -23,30 +29,19 @@
 //!     .take(100)
 //!     .collect();
 //!
-//! // A Merkle tree composed from the leaves.
-//! let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
-//!
-//! // A proof of inclusion for an arbitrary number of leaves
-//! // specified by the 0-indexed ordered indices.
-//! let proof = tree.proof(&[0, 1, 42, 98]).unwrap();
-//!
-//! // verify the merkle proof of inclusion by comparing the
-//! // result to the Merkle root.
-//! let inclusion = vec![
-//!     (98, &leaves[98]),
-//!     (1, &leaves[1]),
-//!     (42, &leaves[42]),
-//!     (0, &leaves[0])
-//! ];
+//! // Verifies the proof of inclusion, e.g. 12th and 98th leaves.
 //! assert_eq!(
-//!     proof.verify(&inclusion).unwrap().as_ref(),
+//!     tree.proof(&[12, 98])
+//!         .unwrap()
+//!         .verify(&[
+//!             (98, tree.leaves().nth(98).unwrap()),
+//!             (12, tree.leaves().nth(12).unwrap()),
+//!         ])
+//!         .unwrap()
+//!         .as_ref(),
 //!     tree.root(),
 //! );
 //! ```
-//! [merkle tree and proof]: https://en.wikipedia.org/wiki/Merkle_tree
-//! [rust crypto]: https://github.com/RustCrypto
-//! [`merkletree`]: struct.MerkleTree.html
-//! [`merkleproof`]: struct.MerkleProof.html
 
 #![no_std]
 #![forbid(unsafe_code, missing_docs, missing_debug_implementations)]

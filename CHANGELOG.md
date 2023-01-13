@@ -1,3 +1,7 @@
+# Version 0.0.11
+
+- Cover all the MerkleTree public APIs.
+
 # Version 0.0.10
 
 - Converts the existing tests into macros to cover
