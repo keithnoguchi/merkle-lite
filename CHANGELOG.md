@@ -1,6 +1,6 @@
 # Version 0.0.11
 
-- Cover all the MerkleTree public APIs.
+- Fix the odd length leaf handling.
 
 # Version 0.0.10
 

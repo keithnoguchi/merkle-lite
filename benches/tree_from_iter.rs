@@ -43,7 +43,7 @@ where
     <N as ArrayLength<u8>>::ArrayType: Copy,
     <<B as OutputSizeUser>::OutputSize as ArrayLength<u8>>::ArrayType: Copy,
 {
-    let leaves = [GenericArray::<u8, N>::default(); NR_LEAVES];
+    let leaves = vec![GenericArray::<u8, N>::default(); NR_LEAVES];
 
     b.iter(|| {
         // compose the Merkle tree from the leaves.

@@ -126,11 +126,6 @@ where
             return tree;
         }
 
-        // make it even leaves.
-        if tree.leaf_range.is_odd_len() {
-            tree.push(tree.data[tree.leaf_range.end().index() - 1].clone());
-        }
-
         // calculate the Merkle root.
         for _ in tree.merkle_root_iter(tree.leaf_range.clone()) {}
 
@@ -194,10 +189,10 @@ where
     /// use merkle_lite::MerkleTree;
     /// use sha3::Sha3_256;
     ///
-    /// let leaves = [[0u8; 32]; 100];
+    /// let leaves = [[0u8; 32]; 127];
     /// let tree: MerkleTree<Sha3_256> = leaves.into_iter().collect();
     ///
-    /// assert_eq!(tree.leaf_len(), 100);
+    /// assert_eq!(tree.leaf_len(), 127);
     /// ```
     pub const fn leaf_len(&self) -> usize {
         self.leaf_range.len()
@@ -394,12 +389,10 @@ where
         Some(proof)
     }
 
-    fn with_leaf_len(leaf_len: usize) -> Self {
-        let total_len = match leaf_len.count_ones() {
+    fn with_leaf_len(mut leaf_len: usize) -> Self {
+        let total_len = match leaf_len {
             0 => 0,
-            1 => {
-                // power of two leaves.
-                //
+            leaf_len if leaf_len.is_power_of_two() => {
                 // The following equasion will give us the entire
                 // tree size, as `leaf_len - 1` represents the
                 // size of the base tree.
@@ -410,6 +403,11 @@ where
                 // calculate the tree capacity in addition to the actual
                 // leaf length.
                 let base = 1 << (usize::BITS - leaf_len.leading_zeros() - 1);
+                // make the `leaf_len` even for the additional space
+                // to copy the last element to have a even leafs.
+                if leaf_len & 0b1 == 0b1 {
+                    leaf_len += 1
+                }
                 (2 * base - 1) + leaf_len
             }
         };
@@ -431,10 +429,31 @@ where
     }
 
     fn merkle_root_iter(&mut self, updated_leaf_range: NodeIndexRange) -> MerkleRootIter<B> {
+        // Makes the start and end indices to be odd to cover the valid range.
+        let start = match updated_leaf_range.start() {
+            start if !start.is_root() && start.is_even() => start - 1,
+            start => start,
+        };
+        let end = match updated_leaf_range.end() {
+            end if end.is_even() => {
+                // In case the odd length leaf,
+                if end == self.leaf_range.end() {
+                    // pushes the last hash in the end without updating
+                    // the `leaf_range`.
+                    //
+                    // This is safe as we allocate even number of nodes
+                    // in `with_leaf_len`.
+                    self.data[self.leaf_range.end().index()] =
+                        self.data[self.leaf_range.end().index() - 1].clone();
+                }
+                end + 1
+            }
+            end => end,
+        };
         MerkleRootIter {
-            data: &mut self.data[..updated_leaf_range.end().index()],
+            data: &mut self.data[..end.index()],
             level_range: self.leaf_range.clone(),
-            updated_range: updated_leaf_range,
+            updated_range: NodeIndexRange(start..end),
         }
     }
 
@@ -499,23 +518,14 @@ where
 {
     /// Calculates the Merkle root in case there is a change in the leaves.
     fn drop(&mut self) {
-        // do nothing in case of no change.
+        // do nothing in case of no changes.
         if self.mutated_set.is_empty() {
             return;
         }
-        // get the range of the change set.
-        let start = match self.mutated_set.first() {
-            Some(&start) if !start.is_root() && start.is_even() => start - 1,
-            Some(&start) => start,
-            None => return,
-        };
-        let end = match self.mutated_set.last() {
-            Some(&end) if end.is_even() => end + 1,
-            Some(&end) => end,
-            None => return,
-        };
         // calculate the Merkle root.
-        for _ in self.tree.merkle_root_iter(NodeIndexRange(start..end)) {}
+        let start = self.mutated_set.first().unwrap();
+        let end = self.mutated_set.last().unwrap();
+        for _ in self.tree.merkle_root_iter(NodeIndexRange(*start..*end)) {}
     }
 }
 
@@ -889,12 +899,6 @@ impl NodeIndexRange {
     #[inline]
     const fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    /// Returns `true` if the range is odd length.
-    #[inline]
-    const fn is_odd_len(&self) -> bool {
-        self.len() & 0b1 == 0b1
     }
 
     /// Returns `start` value.
