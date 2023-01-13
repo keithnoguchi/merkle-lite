@@ -1,3 +1,7 @@
+# Version 0.0.11
+
+- Fix the odd length leaf handling.
+
 # Version 0.0.10
 
 - Converts the existing tests into macros to cover

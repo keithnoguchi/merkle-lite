@@ -26,7 +26,6 @@ macro_rules! test_tree_get_leaves_mut {
 
                     {
                         // Updates all the leaves with the provided hash value.
-                        let leaf_len = tree.leaf_len();
                         let mut leaves_mut = tree.get_leaves_mut();
                         for i in 0..leaf_len {
                             leaves_mut[i] = $single_leaf_hash.into();

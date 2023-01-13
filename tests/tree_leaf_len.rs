@@ -10,36 +10,14 @@ macro_rules! test_tree_leaf_len {
             use merkle_lite::MerkleTree;
 
             #[test]
-            fn tree_leaf_len_single() {
-                let leaves = [GenericArray::<u8, $hash_size>::default(); 1];
-
-                let tree: MerkleTree<$hasher> = leaves.iter().collect();
-                assert_eq!(tree.leaf_len(), 1);
-            }
-
-            #[test]
             fn tree_leaf_len_even() {
-                for leaf_len in (0..200).step_by(2) {
+                for leaf_len in (0..200) {
                     let tree: MerkleTree<$hasher> =
                         iter::repeat(GenericArray::<u8, $hash_size>::default())
                             .take(leaf_len)
                             .collect();
 
                     assert_eq!(tree.leaf_len(), leaf_len);
-                }
-            }
-
-            #[test]
-            fn tree_leaf_len_odd() {
-                for leaf_len in (3..200).step_by(2) {
-                    let tree: MerkleTree<$hasher> =
-                        iter::repeat(GenericArray::<u8, $hash_size>::default())
-                            .take(leaf_len)
-                            .collect();
-
-                    // MerkleTree copies the last element of the leaf to
-                    // make it the even leaves.
-                    assert_eq!(tree.leaf_len(), leaf_len + 1);
                 }
             }
         }
