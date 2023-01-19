@@ -57,10 +57,13 @@ where
 
     b.iter(|| {
         // verify the Merkle root for the proof of inclusion.
-        assert!(tree
-            .proof(&proof_leaf_indices)
-            .unwrap()
-            .verify(&proof_leaf_hashes)
-            .is_some());
+        assert_eq!(
+            tree.proof(&proof_leaf_indices)
+                .unwrap()
+                .verify(&proof_leaf_hashes)
+                .unwrap()
+                .as_ref(),
+            tree.root().unwrap(),
+        );
     })
 }

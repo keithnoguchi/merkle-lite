@@ -1,3 +1,12 @@
+# Version 0.0.12
+
+- Make the data order from root-to-leaf to leaf-to-root
+  1. It only allocates the required number of nodes
+  2. It makes the level iteration much easier to make.
+
+It also dropped leaf_capacity API, as there is
+no leaf node specific capacity anymore.
+
 # Version 0.0.11
 
 - Fix the odd length leaf handling.

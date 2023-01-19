@@ -1,4 +1,4 @@
-/// Tests `MerkleTree::leaf_len()`.
+/// Tests `MerkleTree::depth()`.
 macro_rules! test_tree_leaf_len {
     ($mod:ident, $hash_size:ty, $hasher:ty) => {
         mod $mod {
@@ -10,15 +10,28 @@ macro_rules! test_tree_leaf_len {
             use merkle_lite::MerkleTree;
 
             #[test]
-            fn tree_leaf_len() {
-                for leaf_len in 0..200 {
+            fn tree_depth() {
+                vec![
+                    (0, 0),
+                    (1, 1),
+                    (2, 2),
+                    (3, 3),
+                    (4, 3),
+                    (5, 4),
+                    (6, 4),
+                    (7, 4),
+                    (8, 4),
+                    (9, 5),
+                ]
+                .into_iter()
+                .for_each(|(leaf_len, tree_depth)| {
                     let tree: MerkleTree<$hasher> =
                         iter::repeat(GenericArray::<u8, $hash_size>::default())
                             .take(leaf_len)
                             .collect();
 
-                    assert_eq!(tree.leaf_len(), leaf_len);
-                }
+                    assert_eq!(tree.depth(), tree_depth, "leaf_len={leaf_len}");
+                });
             }
         }
     };

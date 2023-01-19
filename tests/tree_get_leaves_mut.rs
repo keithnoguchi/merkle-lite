@@ -1,6 +1,6 @@
 /// Tests `MerkleTree::get_leaves_mut()`.
 ///
-/// Identical leaves to keep the number of Merkle root sane.
+/// Identical leaves to keep the number of Merkle root manageable.
 macro_rules! test_tree_get_leaves_mut {
     ($mod:ident, $hash_len:ty, $hasher:ty, $single_leaf_hash:expr, $merkle_root_in_depth:expr) => {
         mod $mod {
@@ -33,9 +33,8 @@ macro_rules! test_tree_get_leaves_mut {
                     }
 
                     // Tests the Markle root.
-                    let root = tree.root();
+                    let root = tree.root().unwrap();
                     let depth = tree.depth();
-
                     assert_eq!(
                         root, merkle_root_in_depth[&depth],
                         "leaf_len={leaf_len}, tree_depth={depth}, tree_root={root:02x?}",
