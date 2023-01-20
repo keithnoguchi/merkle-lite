@@ -21,7 +21,7 @@ macro_rules! test_tree_root {
                         iter::repeat($single_leaf_hash).take(leaf_len).collect();
 
                     // Tests the Merkle root.
-                    let root = tree.root();
+                    let root = tree.root().unwrap();
                     let depth = tree.depth();
                     assert_eq!(
                         root, merkle_root_in_depth[&depth],

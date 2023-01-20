@@ -20,26 +20,27 @@
 //!
 //! use merkle_lite::MerkleTree;
 //!
-//! // Composes MerkleTree from the 100 random leaves.
+//! // Composes MerkleTree with the 50,000 random leaves.
 //! let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
 //!     .map(|mut leaf| {
 //!         rand_core::OsRng.fill_bytes(&mut leaf);
 //!         leaf
 //!     })
-//!     .take(100)
+//!     .take(50_000)
 //!     .collect();
 //!
-//! // Verifies the proof of inclusion, e.g. 12th and 98th leaves.
+//! // Verifies the proof of inclusion for the particular leaves.
+//! let leaf_indices = [12, 0, 1, 1201, 13_903, 980];
+//! let leaf_hashes: Vec<_> = leaf_indices
+//!     .iter().map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
+//!     .collect();
 //! assert_eq!(
-//!     tree.proof(&[12, 98])
-//!         .unwrap()
-//!         .verify(&[
-//!             (98, tree.leaves().nth(98).unwrap()),
-//!             (12, tree.leaves().nth(12).unwrap()),
-//!         ])
-//!         .unwrap()
+//!     tree.proof(&leaf_indices)
+//!         .expect("proof")
+//!         .verify(&leaf_hashes)
+//!         .expect("verify")
 //!         .as_ref(),
-//!     tree.root(),
+//!     tree.root().expect("root"),
 //! );
 //! ```
 
@@ -50,7 +51,7 @@ extern crate alloc;
 
 use core::fmt::Debug;
 use core::mem;
-use core::ops::{Add, AddAssign, Index, IndexMut, Sub};
+use core::ops::{Add, AddAssign, Div, Index, IndexMut, Sub, SubAssign};
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::{vec, vec::Vec};
@@ -77,7 +78,7 @@ type Buffer<B> = <<B as OutputSizeUser>::OutputSize as ArrayLength<u8>>::ArrayTy
 /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
 ///
 /// assert_eq!(
-///     tree.root(),
+///     tree.root().unwrap(),
 ///     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
 /// );
 /// ```
@@ -87,7 +88,7 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// Provides the range of the leaf node in `data`.
+    /// Provides the range of leaf node index.
     leaf_range: NodeIndexRange,
 
     /// Points to the contiguous memory of array of `data`, e.g. hash value.
@@ -117,8 +118,7 @@ where
                 data.as_ref().len() == <B as Digest>::output_size(),
                 "invalid hash length"
             );
-            let data = NodeData::try_from(data.as_ref()).unwrap();
-            tree.push(data);
+            tree.push(NodeData::try_from(data.as_ref()).unwrap());
         });
 
         // nothing to do in case of the zero or single leaf tree.
@@ -198,11 +198,6 @@ where
         self.leaf_range.len()
     }
 
-    /// Returns the total number of leaf node without reallocating.
-    pub fn leaf_capacity(&self) -> usize {
-        self.data.capacity() - self.leaf_range.start().index()
-    }
-
     /// Returns the Merkle tree depth.
     ///
     /// # Examples
@@ -221,8 +216,8 @@ where
     ///
     /// assert_eq!(tree.depth(), 5);
     /// ```
-    pub const fn depth(&self) -> usize {
-        (usize::BITS - self.leaf_range.end().index().leading_zeros()) as usize
+    pub fn depth(&self) -> usize {
+        (usize::BITS - self.data.len().leading_zeros()) as usize
     }
 
     /// Returns the Merkle root.
@@ -241,16 +236,12 @@ where
     /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
     ///
     /// assert_eq!(
-    ///     tree.root(),
+    ///     tree.root().unwrap(),
     ///     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
     /// );
     /// ```
-    ///
-    /// # Panics
-    ///
-    /// May panic in case the tree is empty.
-    pub fn root(&self) -> &[u8] {
-        self.data[0].as_ref()
+    pub fn root(&self) -> Option<&[u8]> {
+        self.data.last().map(|node| node.as_ref())
     }
 
     /// Returns the leaves iterator of the Merkle tree.
@@ -282,7 +273,7 @@ where
     pub fn leaves(&self) -> impl Iterator<Item = &[u8]> {
         self.data[self.leaf_range.as_range_usize()]
             .iter()
-            .map(|n| n.as_ref())
+            .map(|node| node.as_ref())
     }
 
     /// Get the mutable Merkle tree leaves.
@@ -315,7 +306,7 @@ where
     ///     });
     /// }
     /// assert_eq!(
-    ///     tree.root(),
+    ///     tree.root().unwrap(),
     ///     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
     /// );
     /// ```
@@ -336,38 +327,37 @@ where
     ///
     /// use merkle_lite::MerkleTree;
     ///
-    /// // 100 random leaves.
-    /// let leaves: Vec<_> = std::iter::repeat([0u8; 32])
+    /// // Composes MerkleTree with the 10 random leaves.
+    /// let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
     ///     .map(|mut leaf| {
     ///         rand_core::OsRng.fill_bytes(&mut leaf);
     ///         leaf
     ///     })
-    ///     .take(100)
+    ///     .take(10)
     ///     .collect();
     ///
-    /// // A Merkle tree composed from the leaves.
-    /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
-    ///
-    /// // A proof of inclusion for an arbitrary number of leaves
-    /// // specified by the 0-indexed ordered indices.
-    /// let proof = tree.proof(&[12, 98]).unwrap();
-    ///
-    /// // verify the merkle proof of inclusion by comparing the
-    /// // result to the Merkle root.
-    /// let inclusion = [(98, &leaves[98]), (12, &leaves[12])];
+    /// // Verifies the proof of inclusion for the particular leaves.
     /// assert_eq!(
-    ///     proof.verify(&inclusion).unwrap().as_ref(),
-    ///     tree.root(),
+    ///     tree.proof(&[0, 1, 9])
+    ///         .unwrap()
+    ///         .verify(&[
+    ///             (1, tree.leaves().nth(1).unwrap()),
+    ///             (9, tree.leaves().nth(9).unwrap()),
+    ///             (0, tree.leaves().nth(0).unwrap()),
+    ///         ])
+    ///         .unwrap()
+    ///         .as_ref(),
+    ///     tree.root().unwrap(),
     /// );
     /// ```
     pub fn proof<'a, I>(&self, leaf_indices: I) -> Option<MerkleProof<B>>
     where
         I: IntoIterator<Item = &'a usize>,
     {
-        // sanity check of the leaf indices.
+        // Ignore the out of range indices.
         let leaf_indices: BTreeSet<_> = leaf_indices
             .into_iter()
-            .map(|index| self.leaf_range.start() + *index)
+            .map(|index| NodeIndex(*index))
             .filter(|index| self.leaf_range.0.contains(index))
             .collect();
 
@@ -389,7 +379,7 @@ where
         Some(proof)
     }
 
-    fn with_leaf_len(mut leaf_len: usize) -> Self {
+    fn with_leaf_len(leaf_len: usize) -> Self {
         let total_len = match leaf_len {
             0 => 0,
             leaf_len if leaf_len.is_power_of_two() => {
@@ -399,68 +389,47 @@ where
                 2 * leaf_len - 1
             }
             _ => {
-                // get the base power of two of the leaf_len, and then
-                // calculate the tree capacity in addition to the actual
-                // leaf length.
-                let base = 1 << (usize::BITS - leaf_len.leading_zeros() - 1);
-                // make the `leaf_len` even for the additional space
-                // to copy the last element to have a even leafs.
-                if leaf_len & 0b1 == 0b1 {
-                    leaf_len += 1
+                // Counts each level length for depth's times.
+                //
+                // In case of the odd number of length, add one
+                // for the next level.
+                let mut total = 1;
+                let mut level_len = leaf_len;
+                while level_len > 1 {
+                    total += level_len;
+                    level_len = level_len / 2 + level_len % 2;
                 }
-                (2 * base - 1) + leaf_len
+                total
             }
         };
-        let start = total_len - leaf_len;
         Self {
             data: vec![NodeData::default(); total_len],
-            leaf_range: NodeIndexRange::from(start..start),
+            leaf_range: NodeIndexRange::default(),
         }
     }
 
-    #[inline]
     fn push(&mut self, data: NodeData<B>) {
-        if self.leaf_range.end().index() < self.data.len() {
-            self.data[self.leaf_range.end().index()] = data;
+        if self.leaf_range.end().as_usize() < self.data.len() {
+            self.data[self.leaf_range.end().as_usize()] = data;
         } else {
             self.data.push(data);
         }
         *self.leaf_range.end_mut() += 1;
     }
 
-    fn merkle_root_iter(&mut self, updated_leaf_range: NodeIndexRange) -> MerkleRootIter<B> {
-        // Makes the start and end indices to be odd to cover the valid range.
-        let start = match updated_leaf_range.start() {
-            start if !start.is_root() && start.is_even() => start - 1,
-            start => start,
-        };
-        let end = match updated_leaf_range.end() {
-            end if end.is_even() => {
-                // In case the odd length leaf,
-                if end == self.leaf_range.end() {
-                    // pushes the last hash in the end without updating
-                    // the `leaf_range`.
-                    //
-                    // This is safe as we allocate even number of nodes
-                    // in `with_leaf_len`.
-                    self.data[self.leaf_range.end().index()] =
-                        self.data[self.leaf_range.end().index() - 1].clone();
-                }
-                end + 1
-            }
-            end => end,
-        };
+    fn merkle_root_iter(&mut self, updated_range: NodeIndexRange) -> MerkleRootIter<B> {
         MerkleRootIter {
-            data: &mut self.data[..end.index()],
             level_range: self.leaf_range.clone(),
-            updated_range: NodeIndexRange(start..end),
+            updated_range,
+            data: &mut self.data[..],
         }
     }
 
     fn merkle_lemmas_iter(&self, leaf_indices: BTreeSet<NodeIndex>) -> MerkleLemmasIter<B> {
         MerkleLemmasIter {
-            data: &self.data,
+            level_range: self.leaf_range.clone(),
             level_indices: leaf_indices,
+            data: &self.data[..],
         }
     }
 }
@@ -494,7 +463,6 @@ where
     type Output = digest::Output<B>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        let index = self.tree.leaf_range.start().index() + index;
         self.tree.data[index].0.as_ref().unwrap()
     }
 }
@@ -505,7 +473,6 @@ where
     Buffer<B>: Copy,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let index = self.tree.leaf_range.start().index() + index;
         self.mutated_set.insert(NodeIndex(index));
         self.tree.data[index].0.as_mut().unwrap()
     }
@@ -572,7 +539,7 @@ where
     ///
     /// use merkle_lite::MerkleTree;
     ///
-    /// // 100 random leaves.
+    /// // A tree with 100 random leaves.
     /// let leaves: Vec<_> = std::iter::repeat([0u8; 32])
     ///     .map(|mut leaf| {
     ///         rand_core::OsRng.fill_bytes(&mut leaf);
@@ -593,7 +560,7 @@ where
     /// let inclusion = vec![(98, &leaves[98]), (99, &leaves[99])];
     /// assert_eq!(
     ///     proof.verify(&inclusion).unwrap().as_ref(),
-    ///     tree.root(),
+    ///     tree.root().unwrap(),
     /// );
     /// ```
     pub fn verify<'a, T, I>(mut self, leaves: I) -> Option<impl AsRef<[u8]>>
@@ -608,41 +575,40 @@ where
                     v.as_ref().len() == <B as Digest>::output_size(),
                     "invalid hash length"
                 );
-                let index = self.leaf_range.start() + *k;
                 let data = NodeData::<B>::try_from(v.as_ref()).unwrap();
-                (index, data)
+                (NodeIndex(*k), data)
             })
             .collect();
 
-        // sanity check that `leaf_indices` cover all the required
-        // indices.
+        // Checks if `leaf_indices` covers all the required indices.
         let leaf_indices: BTreeSet<_> = leaves.keys().cloned().collect();
         if leaf_indices != self.leaf_indices {
             return None;
         }
 
-        // calculate the Merkle proof root.
-        for _ in Self::merkle_proof_iter(leaves, &mut self.lemmas[..]) {}
+        // Calculates the Merkle proof root.
+        for _ in self.merkle_proof_iter(leaves) {}
 
         // last entry of lemmas holds the merkle root.
         self.lemmas
             .last()
-            .and_then(|lemmas| lemmas.get(&NodeIndex::ROOT))
+            .and_then(|lemmas| lemmas.get(&NodeIndex(0)))
             .and_then(|node| node.0)
     }
 
     fn merkle_proof_iter(
+        &mut self,
         leaf_hashes: BTreeMap<NodeIndex, NodeData<B>>,
-        lemmas: &mut [BTreeMap<NodeIndex, NodeData<B>>],
     ) -> MerkleProofIter<B> {
         MerkleProofIter {
+            level_range: self.leaf_range.clone(),
             level_hashes: leaf_hashes,
-            lemmas,
+            lemmas: &mut self.lemmas[..],
         }
     }
 }
 
-/// Merkle proof iterator.
+/// A Merkle proof iterator.
 ///
 /// Calculate the Merkle root as for the proof of inclusion.
 struct MerkleProofIter<'a, B>
@@ -650,10 +616,13 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// current level hashes to calculate the parent hashes.
+    /// A current level range.
+    level_range: NodeIndexRange,
+
+    /// A current level hashes to calculate the parent hashes.
     level_hashes: BTreeMap<NodeIndex, NodeData<B>>,
 
-    /// lemmas for the Merkle proof calculation.
+    /// Lemmas for the Merkle proof calculation.
     lemmas: &'a mut [BTreeMap<NodeIndex, NodeData<B>>],
 }
 
@@ -665,19 +634,29 @@ where
     type Item = ();
 
     fn next(&mut self) -> Option<Self::Item> {
-        // get the next lemmas.
+        // Gets the next level lemmas.
         let lemmas = match mem::take(&mut self.lemmas).split_first_mut() {
             None => return None,
+            Some((first, remains)) if remains.is_empty() => {
+                // There is a special case, not practical, that the Merkle
+                // proof had been called against the single node tree.
+                //
+                // We just copy Merkle root, which was passed by the caller.
+                if first.is_empty() {
+                    *first = self.level_hashes.clone();
+                }
+                return None;
+            }
             Some((first, remains)) => {
                 self.lemmas = remains;
                 first
             }
         };
 
-        // calculate the next level hashes.
+        // Calculates the next level hashes.
         let mut level_hashes = BTreeMap::new();
         for (index, data) in &self.level_hashes {
-            let sibling_index = index.sibling().unwrap();
+            let sibling_index = index.sibling(&self.level_range).unwrap();
             let sibling = match self.level_hashes.get(&sibling_index) {
                 Some(data) => data,
                 None => match lemmas.get(&sibling_index) {
@@ -686,34 +665,33 @@ where
                 },
             };
             let mut hasher = B::new();
-            if index.is_odd() {
-                hasher.update(data);
+            if index.is_odd(&self.level_range) {
                 hasher.update(sibling);
+                hasher.update(data);
             } else {
-                hasher.update(sibling);
                 hasher.update(data);
+                hasher.update(sibling);
             }
             let parent_data = NodeData::<B>::from(hasher.finalize());
-            let parent_index = index.parent().unwrap();
-
-            // We got the Markle root.  Cache it in the self.lemma
-            // and break the loop.
-            if parent_index.is_root() {
-                self.lemmas
-                    .first_mut()
-                    .map(|map| map.insert(parent_index, parent_data));
-                break;
-            } else {
-                level_hashes.insert(parent_index, parent_data);
-            }
+            let parent_index = *index / 2;
+            level_hashes.insert(parent_index, parent_data);
         }
-        self.level_hashes = level_hashes;
+
+        // Keeps the Markle root in case it's in the root level.
+        if self.lemmas.len() == 1 {
+            if let Some(lemma) = self.lemmas.first_mut() {
+                *lemma = level_hashes;
+            }
+        } else {
+            self.level_range = self.level_range.clone() / 2;
+            self.level_hashes = level_hashes;
+        }
 
         Some(())
     }
 }
 
-/// Merkle proof lemmas iterator.
+/// A Merkle proof lemmas iterator.
 ///
 /// Get the Merkle tree lemmas for the Merkle proof.
 struct MerkleLemmasIter<'a, B>
@@ -721,10 +699,13 @@ where
     B: OutputSizeUser,
     Buffer<B>: Copy,
 {
-    /// current level indices which requires lemma, siblings.
+    /// A current level index range.
+    level_range: NodeIndexRange,
+
+    /// A current level indices needs lemma, e.g. sibling.
     level_indices: BTreeSet<NodeIndex>,
 
-    /// borrowed reference to the `MerkleTree::data`.
+    /// A remaining node of tree.
     data: &'a [NodeData<B>],
 }
 
@@ -736,46 +717,58 @@ where
     type Item = BTreeMap<NodeIndex, NodeData<B>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.level_indices.is_empty() {
+        // Checks for the completion.
+        if self.data.is_empty() {
             return None;
-        } else if self.level_indices.get(&NodeIndex::ROOT).is_some() {
-            // empty out the level indices to indicate the completion.
-            self.level_indices = BTreeSet::new();
+        }
 
-            // returns the empty BtreeMap as a place holder of
-            // the Merkle Root, which will be calculated and
-            // cached in the verification phase.
+        // Prepares the current level node.
+        let split = self.level_range.end().as_usize();
+        let (children, parents) = mem::take(&mut self.data).split_at(split);
+        if parents.is_empty() {
+            // Set's the data to zero and returns the empty `BTreeMap`
+            // as a placeholder of the Merkle root calculated by
+            // `MerkleProofIter`.
+            self.data = parents;
             return Some(BTreeMap::new());
         }
 
-        // prepare the next level index and the level lemmas.
+        // Prepares the next level index and the level lemmas.
         let mut next_indices = BTreeSet::new();
         let mut lemmas = BTreeMap::new();
         for index in &self.level_indices {
-            // first the parent for the next level indices.
-            next_indices.insert(index.parent().unwrap());
+            // Remembers the parent indices for the next iteration.
+            next_indices.insert(*index / 2);
 
-            // get the sibling index.
-            let sibling = index.sibling().unwrap();
+            // Gets the sibling index.
+            let sibling = index.sibling(&self.level_range).unwrap();
 
-            // we don't need to store the lemma in case of
-            // the sibling pair is in the `level_indices`.
+            // We don't need to store the lemma in case of
+            // the sibling pair is IN the `level_indices`.
             if self.level_indices.contains(&sibling) {
                 continue;
             }
 
-            // store the lemma.
-            lemmas.insert(sibling, self.data[sibling.0].clone());
+            // Stores the lemma.
+            //
+            // If in case the sibling is out of range, stores itself.
+            if sibling == self.level_range.end() {
+                lemmas.insert(sibling, children[index.0].clone());
+            } else {
+                lemmas.insert(sibling, children[sibling.0].clone());
+            }
         }
 
         // Update the next level indices.
+        self.level_range = self.level_range.clone() / 2;
         self.level_indices = next_indices;
+        self.data = parents;
 
         Some(lemmas)
     }
 }
 
-/// Merkle root calculation iterator.
+/// A Merkle root calculation iterator.
 ///
 /// It iteratively calculates parent digests to generate the Merkle root.
 struct MerkleRootIter<'a, B>
@@ -783,13 +776,13 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// represents the range of the current level.
+    /// A current level node range.
     level_range: NodeIndexRange,
 
-    /// represents the range of the updated child node.
+    /// A current updated node range.
     updated_range: NodeIndexRange,
 
-    /// borrowed reference to the `MerkleTree::data`.
+    /// A remaining tree of node.
     data: &'a mut [NodeData<B>],
 }
 
@@ -801,49 +794,51 @@ where
     type Item = NodeIndexRange;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // less than 1 represents the completion of the root hash
-        // and end of the iteration.
-        if self.updated_range.len() <= 1 {
+        if self.data.len() <= 1 {
             return None;
         }
 
-        // calculates the parent hash.
-        let split = self.updated_range.start().index();
-        let parent_range = self.updated_range.next().unwrap();
-        let parent_base = parent_range.start().index();
-        let (parents, children) = mem::take(&mut self.data).split_at_mut(split);
-        for (i, pair) in children.chunks(2).enumerate() {
+        // Adjust the child and the parent ranges.
+        let mut child_range = self.updated_range.clone();
+        if child_range.start().is_odd(&self.level_range) {
+            // The updated index range always starts even.
+            *child_range.start_mut() -= 1;
+        }
+        if child_range.is_empty() {
+            // It's at least one node remains to update the
+            // parent hash.
+            *child_range.end_mut() += 1;
+        }
+        let mut parent_range = self.updated_range.clone() / 2;
+        if parent_range.is_empty() {
+            *parent_range.end_mut() += 1;
+        }
+
+        // Calculates the parent hash.
+        let split = self.level_range.end().as_usize();
+        let (children, parents) = mem::take(&mut self.data).split_at_mut(split);
+        let siblings = children[child_range.as_range_usize()].chunks_exact(2);
+        let mut parent_index = 0;
+        for pair in siblings.clone() {
             let mut hasher = B::new();
             for child in pair {
                 hasher.update(child);
             }
-            parents[parent_base + i] = NodeData::from(hasher.finalize());
+            parents[parent_index] = NodeData::from(hasher.finalize());
+            parent_index += 1;
+        }
+        // Duplicates the last odd child, if there is.
+        if let Some(child) = siblings.remainder().first() {
+            let mut hasher = B::new();
+            hasher.update(child);
+            hasher.update(child);
+            parents[parent_index] = NodeData::from(hasher.finalize());
         }
 
-        // adjust the next child range.
-        let NodeIndexRange(core::ops::Range { start, end }) = parent_range;
-        let start = if !start.is_root() && start.is_even() {
-            start - 1
-        } else {
-            start
-        };
-
-        // make sure the updated node is even.
-        self.level_range.next().unwrap();
-        let end = if end.is_even() {
-            if end >= self.level_range.end() {
-                // Copy the last element in case it's out of
-                // level range.
-                parents[end.0] = parents[end.0 - 1].clone();
-            }
-            end + 1
-        } else {
-            end
-        };
-
-        // prepare the state for the next iteration.
-        self.data = &mut parents[..end.0];
-        self.updated_range = NodeIndexRange(start..end);
+        // Prepare the iterator for the next round.
+        self.level_range = self.level_range.clone() / 2;
+        self.updated_range = parent_range.clone();
+        self.data = parents;
 
         Some(parent_range)
     }
@@ -851,22 +846,24 @@ where
 
 /// A tree node index range.
 ///
-/// It's an iterable value and gives the way to move the tree level
-/// up to the the zero length range.
-#[derive(Clone, Debug)]
+/// It's an iterable value which halves in each
+/// iteration.
+#[derive(Clone, Debug, Default)]
 struct NodeIndexRange(core::ops::Range<NodeIndex>);
 
-impl Iterator for NodeIndexRange {
-    type Item = Self;
+impl Div<usize> for NodeIndexRange {
+    type Output = Self;
 
-    /// Returns the next up of the tree node index range.
-    fn next(&mut self) -> Option<Self> {
-        if self.is_empty() {
-            return None;
+    fn div(self, rhs: usize) -> Self {
+        let start = self.0.start.as_usize() / rhs;
+        let mut end = self.0.end.as_usize() / rhs;
+
+        // Requires additional node in case there is a remainder.
+        if self.0.end.as_usize() % rhs != 0 {
+            end += 1;
         }
-        self.0.start = self.0.start.parent().unwrap();
-        self.0.end = self.0.end.parent().unwrap();
-        Some(self.clone())
+
+        (start..end).into()
     }
 }
 
@@ -879,20 +876,35 @@ impl From<core::ops::Range<usize>> for NodeIndexRange {
     }
 }
 
+impl From<core::ops::RangeTo<usize>> for NodeIndexRange {
+    fn from(range: core::ops::RangeTo<usize>) -> Self {
+        Self(core::ops::Range {
+            start: NodeIndex(0),
+            end: NodeIndex(range.end),
+        })
+    }
+}
+
 impl From<NodeIndexRange> for core::ops::Range<usize> {
     fn from(range: NodeIndexRange) -> Self {
         core::ops::Range {
-            start: range.0.start.index(),
-            end: range.0.end.index(),
+            start: range.0.start.as_usize(),
+            end: range.0.end.as_usize(),
         }
     }
 }
 
 impl NodeIndexRange {
+    /// Returns the `NodeIndexRange` in `Range<usize>`.
+    #[inline]
+    const fn as_range_usize(&self) -> core::ops::Range<usize> {
+        self.0.start.as_usize()..self.0.end.as_usize()
+    }
+
     /// Returns the length of the range.
     #[inline]
     const fn len(&self) -> usize {
-        self.0.end.index() - self.0.start.index()
+        self.0.end.as_usize() - self.0.start.as_usize()
     }
 
     /// Returns `true` if the length of the range is zero.
@@ -913,21 +925,21 @@ impl NodeIndexRange {
         self.0.end
     }
 
+    /// Returns the mutable `start` value.
+    #[inline]
+    fn start_mut(&mut self) -> &mut NodeIndex {
+        &mut self.0.start
+    }
+
     /// Returns mutable `end` value.
     #[inline]
     fn end_mut(&mut self) -> &mut NodeIndex {
         &mut self.0.end
     }
-
-    /// Returns the `NodeIndexRange` in `Range<usize>`.
-    #[inline]
-    const fn as_range_usize(&self) -> core::ops::Range<usize> {
-        self.0.start.0..self.0.end.0
-    }
 }
 
 /// A tree node index.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 struct NodeIndex(usize);
 
 impl From<NodeIndex> for usize {
@@ -944,6 +956,12 @@ impl Add<usize> for NodeIndex {
     }
 }
 
+impl AddAssign<usize> for NodeIndex {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs
+    }
+}
+
 impl Sub<usize> for NodeIndex {
     type Output = Self;
 
@@ -952,61 +970,45 @@ impl Sub<usize> for NodeIndex {
     }
 }
 
-impl AddAssign<usize> for NodeIndex {
-    fn add_assign(&mut self, rhs: usize) {
-        self.0 += rhs
+impl SubAssign<usize> for NodeIndex {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.0 -= rhs
+    }
+}
+
+impl Div<usize> for NodeIndex {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self {
+        Self(self.0 / rhs)
     }
 }
 
 impl NodeIndex {
-    const ROOT: Self = Self(0);
-
-    /// Returns `true` if it's root index.
+    /// Returns index as `usize`.
     #[inline]
-    fn is_root(&self) -> bool {
-        self == &Self::ROOT
-    }
-
-    /// Returns `true` if it's an odd index.
-    #[inline]
-    const fn is_odd(&self) -> bool {
-        (self.0 & 0b1) == 0b1
-    }
-
-    /// Returns `true` if it's an even index.
-    #[inline]
-    const fn is_even(&self) -> bool {
-        !self.is_odd()
-    }
-
-    /// Returns the parent index or `None`.
-    #[inline]
-    fn parent(&self) -> Option<Self> {
-        if self.is_root() {
-            None
-        } else {
-            Some(Self((self.0 - 1) / 2))
-        }
-    }
-
-    /// Returns the sibling index or `None`.
-    #[inline]
-    fn sibling(&self) -> Option<Self> {
-        if self.is_root() {
-            None
-        } else if self.is_odd() {
-            Some(Self(self.0 + 1))
-        } else {
-            Some(Self(self.0 - 1))
-        }
-    }
-
-    /// Returns `NodeIndex` in `usize`.
-    ///
-    /// This is usuful as the array index.
-    #[inline]
-    const fn index(&self) -> usize {
+    const fn as_usize(&self) -> usize {
         self.0
+    }
+
+    /// Returns `true` if it's an odd index of the range.
+    #[inline]
+    const fn is_odd(&self, range: &NodeIndexRange) -> bool {
+        (self.0 - range.start().0) % 2 == 1
+    }
+
+    /// Returns the sibling index of `Self`, or `None`
+    /// in case `Self` is the root node, e.g. range length
+    /// is `1`.
+    #[inline]
+    fn sibling(&self, range: &NodeIndexRange) -> Option<Self> {
+        if range.len() == 1 {
+            None
+        } else if self.is_odd(range) {
+            Some(Self(self.0 - 1))
+        } else {
+            Some(Self(self.0 + 1))
+        }
     }
 }
 
