@@ -1,3 +1,7 @@
+# Version 0.0.13
+
+- Adds the Merkle proof example
+
 # Version 0.0.12
 
 - Make the data order from root-to-leaf to leaf-to-root
