@@ -20,7 +20,7 @@
 //!
 //! use merkle_lite::MerkleTree;
 //!
-//! // Composes MerkleTree with the 50,000 random leaves.
+//! // Composes a MerkleTree for the 50,000 hashes.
 //! let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
 //!     .map(|mut leaf| {
 //!         rand_core::OsRng.fill_bytes(&mut leaf);
@@ -29,7 +29,7 @@
 //!     .take(50_000)
 //!     .collect();
 //!
-//! // Verifies the proof of inclusion for the particular leaves.
+//! // Verifies the proof of inclusion for the some leaves.
 //! let leaf_indices = [12, 0, 1, 1201, 13_903, 980];
 //! let leaf_hashes: Vec<_> = leaf_indices
 //!     .iter().map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
@@ -327,7 +327,7 @@ where
     ///
     /// use merkle_lite::MerkleTree;
     ///
-    /// // Composes MerkleTree with the 10 random leaves.
+    /// // Composes MerkleTree for the 10 random leaves.
     /// let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
     ///     .map(|mut leaf| {
     ///         rand_core::OsRng.fill_bytes(&mut leaf);

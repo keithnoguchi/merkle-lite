@@ -22,7 +22,7 @@ use sha3::Sha3_256;
 
 use merkle_lite::MerkleTree;
 
-// Composes MerkleTree with the 50,000 random leaves.
+// Composes a MerkleTree for the 50,000 hashes.
 let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
     .map(|mut leaf| {
         rand_core::OsRng.fill_bytes(&mut leaf);
