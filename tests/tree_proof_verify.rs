@@ -23,10 +23,11 @@ macro_rules! test_tree_proof_verify {
                         .collect();
 
                 // Tests the Merkle root.
+                let tree_leaves = tree.get_leaves();
                 let leaf_indices: Vec<_> = $leaf_indices.into_iter().flatten().collect();
                 let leaf_hash: Vec<_> = leaf_indices
                     .iter()
-                    .map(|index| (*index, tree.leaves().nth(*index).unwrap()))
+                    .map(|index| (*index, tree_leaves[*index]))
                     .collect();
                 assert_eq!(
                     tree.proof(&leaf_indices)

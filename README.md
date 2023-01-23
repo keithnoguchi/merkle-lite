@@ -31,10 +31,11 @@ let tree: MerkleTree<sha3::Sha3_256> = std::iter::repeat([0u8; 32])
     .collect();
 
 // Verifies the proof of inclusion for the arbitrary leaves.
+let tree_leaves = tree.get_leaves();
 let leaf_indices = [12, 0, 1, 1201, 13_903, 980];
 let leaf_hashes: Vec<_> = leaf_indices
     .iter()
-    .map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
+    .map(|index| (*index, tree_leaves[*index]))
     .collect();
 assert_eq!(
     tree.proof(&leaf_indices)
