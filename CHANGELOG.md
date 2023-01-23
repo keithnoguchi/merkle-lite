@@ -1,3 +1,7 @@
+# Version 0.1.0
+
+- A minor release based on version 0.0.15.
+
 # Version 0.0.15
 
 - Add MerkleLeaves type to access leaves by indices.

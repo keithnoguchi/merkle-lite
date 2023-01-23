@@ -1,4 +1,14 @@
 //! A `sha3::Sha3_256` Merkle proof example.
+//!
+//! Run with:
+//! ```
+//! cargo run --example merkle-proof
+//! ```
+//!
+//! Check the command line options with:
+//! ```
+//! cargo run --example merkle-proof -- -h
+//! ```
 
 use std::collections::HashSet;
 use std::iter;
@@ -14,7 +24,7 @@ use rand_core::RngCore;
 use tracing::{info, instrument, trace};
 
 #[derive(Debug, Parser)]
-#[command(author, version, about, long_about)]
+#[command(author, version, about, long_about = None)]
 struct Args {
     /// Number of leaves.
     #[arg(short = 'n', long, default_value_t = 10_000)]

@@ -2,7 +2,7 @@
 name = "merkle-lite"
 # When publishing a new version:
 # - Update CHANGELOG.md
-version = "0.0.15"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.61"
 authors = ["Keith Noguchi <keith@noguchi.us>"]
@@ -19,15 +19,15 @@ description = "A simple, fast, and composable binary Merkle tree and proof for R
 digest = "0.10.6"
 
 [dev-dependencies]
-bencher = "0.1.5"
-clap = { version = "4.1.1", features = ["derive"] }
-fastrand = "1.8.0"
-hex-literal = "0.3.4"
-rand_core = { version = "0.6.4", features = ["getrandom"] }
-sha2 = "0.10.6"
-sha3 = "0.10.6"
-tracing = "0.1.37"
-tracing-subscriber = "0.3.16"
+bencher = "0.1"
+clap = { version = "4", features = ["derive"] }
+fastrand = "1"
+hex-literal = "0.3"
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
+sha3 = "0.10"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [[bench]]
 name = "tree_from_iter"
