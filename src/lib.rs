@@ -11,17 +11,15 @@
 //! [`merkletree`]: struct.MerkleTree.html
 //! [`merkleproof`]: struct.MerkleProof.html
 //!
-//! Here is how to compose [`MerkleTree`] and [`MerkleProof`] for the
-//! proof of inclusion verification:
+//! It's super simple to compose [MerkleTree] from the ordered array
+//! of hashes and verify the proof of inclusion with [MerkleProof]:
 //!
 //! ```
-//! use rand_core::RngCore;
-//! use sha3::Sha3_256;
-//!
 //! use merkle_lite::MerkleTree;
+//! use rand_core::RngCore;
 //!
-//! // Composes a MerkleTree for the 50,000 hashes.
-//! let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
+//! // Composes MerkleTree from the 50,000 random hashes.
+//! let tree: MerkleTree<sha3::Sha3_256> = std::iter::repeat([0u8; 32])
 //!     .map(|mut leaf| {
 //!         rand_core::OsRng.fill_bytes(&mut leaf);
 //!         leaf
@@ -29,10 +27,11 @@
 //!     .take(50_000)
 //!     .collect();
 //!
-//! // Verifies the proof of inclusion for the some leaves.
+//! // Verifies the proof of inclusion for the arbitrary leaves.
 //! let leaf_indices = [12, 0, 1, 1201, 13_903, 980];
 //! let leaf_hashes: Vec<_> = leaf_indices
-//!     .iter().map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
+//!     .iter()
+//!     .map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
 //!     .collect();
 //! assert_eq!(
 //!     tree.proof(&leaf_indices)
@@ -51,7 +50,7 @@ extern crate alloc;
 
 use core::fmt::Debug;
 use core::mem;
-use core::ops::{Add, AddAssign, Div, Index, IndexMut, Sub, SubAssign};
+use core::ops::{Deref, DerefMut, Div, DivAssign, Index, IndexMut};
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::{vec, vec::Vec};
@@ -312,7 +311,7 @@ where
     /// ```
     pub fn get_leaves_mut(&mut self) -> MerkleLeavesMut<B> {
         MerkleLeavesMut {
-            mutated_set: BTreeSet::default(),
+            changed_set: LeftNodeIndexSet::default(),
             tree: self,
         }
     }
@@ -409,26 +408,34 @@ where
     }
 
     fn push(&mut self, data: NodeData<B>) {
-        if self.leaf_range.end().as_usize() < self.data.len() {
-            self.data[self.leaf_range.end().as_usize()] = data;
+        if *self.leaf_range.end < self.data.len() {
+            self.data[*self.leaf_range.end] = data;
         } else {
             self.data.push(data);
         }
-        *self.leaf_range.end_mut() += 1;
+        *self.leaf_range.end += 1;
     }
 
-    fn merkle_root_iter(&mut self, updated_range: NodeIndexRange) -> MerkleRootIter<B> {
+    fn merkle_root_iter(&mut self, changed_range: NodeIndexRange) -> MerkleRootIter<B> {
         MerkleRootIter {
+            changed_range,
             level_range: self.leaf_range.clone(),
-            updated_range,
+            data: &mut self.data[..],
+        }
+    }
+
+    fn merkle_root_set_iter(&mut self, changed_set: LeftNodeIndexSet) -> MerkleRootSetIter<B> {
+        MerkleRootSetIter {
+            changed_set,
+            level_range: self.leaf_range.clone(),
             data: &mut self.data[..],
         }
     }
 
     fn merkle_lemmas_iter(&self, leaf_indices: BTreeSet<NodeIndex>) -> MerkleLemmasIter<B> {
         MerkleLemmasIter {
-            level_range: self.leaf_range.clone(),
             level_indices: leaf_indices,
+            level_range: self.leaf_range.clone(),
             data: &self.data[..],
         }
     }
@@ -448,11 +455,29 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// mutated leaves.
-    mutated_set: BTreeSet<NodeIndex>,
+    /// A changed set of the leaf indices.
+    ///
+    /// It only keeps track of the left side of the index
+    /// to make the parent hash calculation simpler.
+    changed_set: LeftNodeIndexSet,
 
     /// mutable reference to the tree for the merkle root calculation.
     tree: &'a mut MerkleTree<B>,
+}
+
+impl<'a, B> Drop for MerkleLeavesMut<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    /// Calculates the Merkle root in case there is a change in the leaves.
+    fn drop(&mut self) {
+        // There is no change.
+        if self.changed_set.is_empty() {
+            return;
+        }
+        for _ in self.tree.merkle_root_set_iter(self.changed_set.clone()) {}
+    }
 }
 
 impl<'a, B> Index<usize> for MerkleLeavesMut<'a, B>
@@ -473,26 +498,9 @@ where
     Buffer<B>: Copy,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.mutated_set.insert(NodeIndex(index));
+        self.changed_set
+            .insert(NodeIndex(index), &self.tree.leaf_range);
         self.tree.data[index].0.as_mut().unwrap()
-    }
-}
-
-impl<'a, B> Drop for MerkleLeavesMut<'a, B>
-where
-    B: Digest,
-    Buffer<B>: Copy,
-{
-    /// Calculates the Merkle root in case there is a change in the leaves.
-    fn drop(&mut self) {
-        // do nothing in case of no changes.
-        if self.mutated_set.is_empty() {
-            return;
-        }
-        // calculate the Merkle root.
-        let start = self.mutated_set.first().unwrap();
-        let end = self.mutated_set.last().unwrap();
-        for _ in self.tree.merkle_root_iter(NodeIndexRange(*start..*end)) {}
     }
 }
 
@@ -601,8 +609,8 @@ where
         leaf_hashes: BTreeMap<NodeIndex, NodeData<B>>,
     ) -> MerkleProofIter<B> {
         MerkleProofIter {
-            level_range: self.leaf_range.clone(),
             level_hashes: leaf_hashes,
+            level_range: self.leaf_range.clone(),
             lemmas: &mut self.lemmas[..],
         }
     }
@@ -616,11 +624,11 @@ where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// A current level range.
-    level_range: NodeIndexRange,
-
     /// A current level hashes to calculate the parent hashes.
     level_hashes: BTreeMap<NodeIndex, NodeData<B>>,
+
+    /// A current level range.
+    level_range: NodeIndexRange,
 
     /// Lemmas for the Merkle proof calculation.
     lemmas: &'a mut [BTreeMap<NodeIndex, NodeData<B>>],
@@ -665,7 +673,7 @@ where
                 },
             };
             let mut hasher = B::new();
-            if index.is_odd(&self.level_range) {
+            if index.is_right(&self.level_range) {
                 hasher.update(sibling);
                 hasher.update(data);
             } else {
@@ -683,8 +691,8 @@ where
                 *lemma = level_hashes;
             }
         } else {
-            self.level_range = self.level_range.clone() / 2;
             self.level_hashes = level_hashes;
+            self.level_range /= 2;
         }
 
         Some(())
@@ -699,11 +707,11 @@ where
     B: OutputSizeUser,
     Buffer<B>: Copy,
 {
-    /// A current level index range.
-    level_range: NodeIndexRange,
-
     /// A current level indices needs lemma, e.g. sibling.
     level_indices: BTreeSet<NodeIndex>,
+
+    /// A current level index range.
+    level_range: NodeIndexRange,
 
     /// A remaining node of tree.
     data: &'a [NodeData<B>],
@@ -723,7 +731,7 @@ where
         }
 
         // Prepares the current level node.
-        let split = self.level_range.end().as_usize();
+        let split = *self.level_range.end;
         let (children, parents) = mem::take(&mut self.data).split_at(split);
         if parents.is_empty() {
             // Set's the data to zero and returns the empty `BTreeMap`
@@ -752,7 +760,7 @@ where
             // Stores the lemma.
             //
             // If in case the sibling is out of range, stores itself.
-            if sibling == self.level_range.end() {
+            if sibling == self.level_range.end {
                 lemmas.insert(sibling, children[index.0].clone());
             } else {
                 lemmas.insert(sibling, children[sibling.0].clone());
@@ -760,27 +768,30 @@ where
         }
 
         // Update the next level indices.
-        self.level_range = self.level_range.clone() / 2;
         self.level_indices = next_indices;
+        self.level_range /= 2;
         self.data = parents;
 
         Some(lemmas)
     }
 }
 
-/// A Merkle root calculation iterator.
+/// A Merkle root calculation iterator based on [`NodeIndexRange`].
 ///
-/// It iteratively calculates parent digests to generate the Merkle root.
+/// It iteratively calculates parent hashes for the range of
+/// child hashes toward the Merkle root.
+///
+/// [`nodeindexrange`]: struct.NodeIndexRange.html
 struct MerkleRootIter<'a, B>
 where
     B: Digest,
     Buffer<B>: Copy,
 {
-    /// A current level node range.
-    level_range: NodeIndexRange,
+    /// A changed range of the indices.
+    changed_range: NodeIndexRange,
 
-    /// A current updated node range.
-    updated_range: NodeIndexRange,
+    /// A current level index range.
+    level_range: NodeIndexRange,
 
     /// A remaining tree of node.
     data: &'a mut [NodeData<B>],
@@ -799,23 +810,23 @@ where
         }
 
         // Adjust the child and the parent ranges.
-        let mut child_range = self.updated_range.clone();
-        if child_range.start().is_odd(&self.level_range) {
+        let mut child_range = self.changed_range.clone();
+        if child_range.start.is_right(&self.level_range) {
             // The updated index range always starts even.
-            *child_range.start_mut() -= 1;
+            *child_range.start -= 1;
         }
         if child_range.is_empty() {
             // It's at least one node remains to update the
             // parent hash.
-            *child_range.end_mut() += 1;
+            *child_range.end += 1;
         }
-        let mut parent_range = self.updated_range.clone() / 2;
+        let mut parent_range = self.changed_range.clone() / 2;
         if parent_range.is_empty() {
-            *parent_range.end_mut() += 1;
+            *parent_range.end += 1;
         }
 
         // Calculates the parent hash.
-        let split = self.level_range.end().as_usize();
+        let split = *self.level_range.end;
         let (children, parents) = mem::take(&mut self.data).split_at_mut(split);
         let siblings = children[child_range.as_range_usize()].chunks_exact(2);
         let mut parent_index = 0;
@@ -836,34 +847,150 @@ where
         }
 
         // Prepare the iterator for the next round.
-        self.level_range = self.level_range.clone() / 2;
-        self.updated_range = parent_range.clone();
+        self.changed_range = parent_range.clone();
+        self.level_range /= 2;
         self.data = parents;
 
         Some(parent_range)
     }
 }
 
-/// A tree node index range.
+/// A Merkle root calculation iterator based on [`LeftNodeIndexSet`].
 ///
-/// It's an iterable value which halves in each
-/// iteration.
+/// It iteratively calculates parent hashes for the set of
+/// child hashes toward the Merkle root.
+///
+/// [`leftnodeindexset`]: struct.LeftNodeIndexSet.html
+struct MerkleRootSetIter<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    /// A changed range of the indices.
+    ///
+    /// It only keeps track of the left side of the indices
+    /// to make the parent hash calculation simpler.
+    changed_set: LeftNodeIndexSet,
+
+    /// A current level index range.
+    level_range: NodeIndexRange,
+
+    /// A remaining tree of node.
+    data: &'a mut [NodeData<B>],
+}
+
+impl<'a, B> Iterator for MerkleRootSetIter<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.data.len() <= 1 {
+            return None;
+        }
+
+        // `LeftNodeIndexSet` for the parent changed set.
+        let mut next_set = LeftNodeIndexSet::default();
+
+        // Splits the tree to get the current level node.
+        let split = *self.level_range.end;
+        let (current, next) = mem::take(&mut self.data).split_at_mut(split);
+
+        // Calculates the parent hash.
+        for index in self.changed_set.iter() {
+            let sibling = index.sibling(&self.level_range).unwrap();
+            let mut hasher = B::new();
+            hasher.update(&current[**index]);
+            hasher.update(&current[*sibling]);
+            let parent = index.parent(&self.level_range).unwrap();
+            next[*parent] = NodeData::from(hasher.finalize());
+            next_set.insert(parent, &self.level_range);
+        }
+
+        // Update the changed sets and data for the next iteration.
+        let changed_count = next_set.len();
+        self.changed_set = next_set;
+        self.level_range /= 2;
+        self.data = next;
+
+        Some(changed_count)
+    }
+}
+
+/// A left node index set.
+///
+/// [`MerkleRootSetIter`] uses it to keep track
+/// of the current changed set to calculate
+/// the parent hashes.
+///
+/// It keeps track of the left side of the indices
+/// to make the parent hash calculation simpler.
+///
+/// [`merklerootsetiter`]: struct.MerkleRootSetIter.html
+#[derive(Clone, Debug, Default)]
+struct LeftNodeIndexSet(BTreeSet<NodeIndex>);
+
+impl Deref for LeftNodeIndexSet {
+    type Target = BTreeSet<NodeIndex>;
+
+    fn deref(&self) -> &BTreeSet<NodeIndex> {
+        &self.0
+    }
+}
+
+impl From<&NodeIndexRange> for LeftNodeIndexSet {
+    fn from(range: &NodeIndexRange) -> Self {
+        // The following code will be replaced by `BTreeSet::from_iter()`
+        // with [`Range`] one liner once [`Step`] is in stable.
+        //
+        // [`range`]: https://doc.rust-lang.org/core/ops/struct.Range.html#impl-Iterator-forRange%3CA%3E
+        // [`step`]: https://doc.rust-lang.org/core/iter/trait.Step.html
+        let mut this = Self::default();
+        for index in range.as_range_usize() {
+            this.insert(NodeIndex(index), range);
+        }
+        this
+    }
+}
+
+impl LeftNodeIndexSet {
+    /// Gets an iterator that visits the `NodeIndex`es
+    /// in `LeftNodeIndexSet`.
+    fn iter(&self) -> impl Iterator<Item = &NodeIndex> {
+        self.0.iter()
+    }
+
+    /// Adds a left side of the index to the set.
+    fn insert(&mut self, index: NodeIndex, range: &NodeIndexRange) -> bool {
+        assert!(range.contains(&index));
+        if index.is_right(range) {
+            match index.sibling(range) {
+                Some(index) => self.0.insert(index),
+                None => false,
+            }
+        } else {
+            self.0.insert(index)
+        }
+    }
+}
+
+/// A node index range.
 #[derive(Clone, Debug, Default)]
 struct NodeIndexRange(core::ops::Range<NodeIndex>);
 
-impl Div<usize> for NodeIndexRange {
-    type Output = Self;
+impl Deref for NodeIndexRange {
+    type Target = core::ops::Range<NodeIndex>;
 
-    fn div(self, rhs: usize) -> Self {
-        let start = self.0.start.as_usize() / rhs;
-        let mut end = self.0.end.as_usize() / rhs;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
-        // Requires additional node in case there is a remainder.
-        if self.0.end.as_usize() % rhs != 0 {
-            end += 1;
-        }
-
-        (start..end).into()
+impl DerefMut for NodeIndexRange {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -888,91 +1015,63 @@ impl From<core::ops::RangeTo<usize>> for NodeIndexRange {
 impl From<NodeIndexRange> for core::ops::Range<usize> {
     fn from(range: NodeIndexRange) -> Self {
         core::ops::Range {
-            start: range.0.start.as_usize(),
-            end: range.0.end.as_usize(),
+            start: *range.0.start,
+            end: *range.0.end,
         }
     }
 }
 
+impl Div<usize> for NodeIndexRange {
+    type Output = Self;
+
+    fn div(mut self, rhs: usize) -> Self {
+        self /= rhs;
+        self
+    }
+}
+
+impl DivAssign<usize> for NodeIndexRange {
+    fn div_assign(&mut self, rhs: usize) {
+        *self.0.start /= rhs;
+        *self.0.end = (*self.0.end + (rhs - 1)) / rhs;
+    }
+}
+
 impl NodeIndexRange {
-    /// Returns the `NodeIndexRange` in `Range<usize>`.
+    /// Returns the `NodeIndexRange` as `Range<usize>`.
     #[inline]
     const fn as_range_usize(&self) -> core::ops::Range<usize> {
-        self.0.start.as_usize()..self.0.end.as_usize()
+        self.0.start.0..self.0.end.0
     }
 
     /// Returns the length of the range.
     #[inline]
     const fn len(&self) -> usize {
-        self.0.end.as_usize() - self.0.start.as_usize()
-    }
-
-    /// Returns `true` if the length of the range is zero.
-    #[inline]
-    const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns `start` value.
-    #[inline]
-    const fn start(&self) -> NodeIndex {
-        self.0.start
-    }
-
-    /// Returns `end` value.
-    #[inline]
-    const fn end(&self) -> NodeIndex {
-        self.0.end
-    }
-
-    /// Returns the mutable `start` value.
-    #[inline]
-    fn start_mut(&mut self) -> &mut NodeIndex {
-        &mut self.0.start
-    }
-
-    /// Returns mutable `end` value.
-    #[inline]
-    fn end_mut(&mut self) -> &mut NodeIndex {
-        &mut self.0.end
+        self.0.end.0 - self.0.start.0
     }
 }
 
-/// A tree node index.
+/// A node index.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 struct NodeIndex(usize);
+
+impl Deref for NodeIndex {
+    type Target = usize;
+
+    fn deref(&self) -> &usize {
+        &self.0
+    }
+}
+
+impl DerefMut for NodeIndex {
+    fn deref_mut(&mut self) -> &mut usize {
+        &mut self.0
+    }
+}
 
 impl From<NodeIndex> for usize {
     fn from(index: NodeIndex) -> usize {
         index.0
-    }
-}
-
-impl Add<usize> for NodeIndex {
-    type Output = Self;
-
-    fn add(self, rhs: usize) -> Self {
-        Self(self.0 + rhs)
-    }
-}
-
-impl AddAssign<usize> for NodeIndex {
-    fn add_assign(&mut self, rhs: usize) {
-        self.0 += rhs
-    }
-}
-
-impl Sub<usize> for NodeIndex {
-    type Output = Self;
-
-    fn sub(self, rhs: usize) -> Self {
-        Self(self.0 - rhs)
-    }
-}
-
-impl SubAssign<usize> for NodeIndex {
-    fn sub_assign(&mut self, rhs: usize) {
-        self.0 -= rhs
     }
 }
 
@@ -985,34 +1084,45 @@ impl Div<usize> for NodeIndex {
 }
 
 impl NodeIndex {
-    /// Returns index as `usize`.
+    /// Returns `true` if the index is the right side of the node.
     #[inline]
-    const fn as_usize(&self) -> usize {
-        self.0
+    const fn is_right(&self, range: &NodeIndexRange) -> bool {
+        (self.0 - range.0.start.0) % 2 == 1
     }
 
-    /// Returns `true` if it's an odd index of the range.
+    /// Returns the parent index of `Self`, or `None`, in
+    /// case of the `Self` is the root index.
     #[inline]
-    const fn is_odd(&self, range: &NodeIndexRange) -> bool {
-        (self.0 - range.start().0) % 2 == 1
+    const fn parent(&self, range: &NodeIndexRange) -> Option<Self> {
+        if range.len() == 1 {
+            None
+        } else {
+            Some(Self(self.0 / 2))
+        }
     }
 
-    /// Returns the sibling index of `Self`, or `None`
-    /// in case `Self` is the root node, e.g. range length
-    /// is `1`.
+    /// Returns the sibling index of `Self`, or:
+    ///
+    /// 1) `None` in case of `Self` is the root index.
+    /// 2) `Self` in case of the sibling is out of range.
     #[inline]
     fn sibling(&self, range: &NodeIndexRange) -> Option<Self> {
         if range.len() == 1 {
             None
-        } else if self.is_odd(range) {
+        } else if self.is_right(range) {
             Some(Self(self.0 - 1))
         } else {
-            Some(Self(self.0 + 1))
+            let sibling = Self(self.0 + 1);
+            if range.0.contains(&sibling) {
+                Some(sibling)
+            } else {
+                Some(*self)
+            }
         }
     }
 }
 
-/// A tree node data.
+/// A node data.
 ///
 /// It abstructs the [`digest::Output`] value.
 ///

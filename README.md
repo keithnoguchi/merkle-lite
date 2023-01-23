@@ -14,16 +14,15 @@ for [Rust Crypto] hash functions.
 
 ## Examples
 
-Here is how to create `MerkleTree` and `MerkleProof`
-for the ordered array of cryptographic hashes:
+It's super simple to compose `MerkleTree` from the ordered array
+of hashes and verify the proof of inclusion with `MerkleProof`:
+
 ```
-use rand_core::RngCore;
-use sha3::Sha3_256;
-
 use merkle_lite::MerkleTree;
+use rand_core::RngCore;
 
-// Composes a MerkleTree for the 50,000 hashes.
-let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
+// Composes MerkleTree from the 50,000 random hashes.
+let tree: MerkleTree<sha3::Sha3_256> = std::iter::repeat([0u8; 32])
     .map(|mut leaf| {
         rand_core::OsRng.fill_bytes(&mut leaf);
         leaf
@@ -31,10 +30,11 @@ let tree: MerkleTree<Sha3_256> = std::iter::repeat([0u8; 32])
     .take(50_000)
     .collect();
 
-// Verifies the proof of inclusion for the particular leaves.
+// Verifies the proof of inclusion for the arbitrary leaves.
 let leaf_indices = [12, 0, 1, 1201, 13_903, 980];
 let leaf_hashes: Vec<_> = leaf_indices
-    .iter().map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
+    .iter()
+    .map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
     .collect();
 assert_eq!(
     tree.proof(&leaf_indices)

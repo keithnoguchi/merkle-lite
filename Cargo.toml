@@ -2,14 +2,16 @@
 name = "merkle-lite"
 # When publishing a new version:
 # - Update CHANGELOG.md
-version = "0.0.13"
+version = "0.0.14"
 edition = "2021"
-rust-version = "1.66"
+rust-version = "1.61"
 authors = ["Keith Noguchi <keith@noguchi.us>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+homepage = "https://github.com/keithnoguchi/merkle-lite"
 repository = "https://github.com/keithnoguchi/merkle-lite"
-keywords = ["crypto", "hash", "merkle", "merkle-tree", "no-std"]
+documentation = "https://docs.rs/merkle-lite"
+keywords = ["crypto", "merkle", "merkle-tree", "no-std"]
 categories = ["data-structures", "cryptography", "no-std"]
 description = "A simple, fast, and composable binary Merkle tree and proof for Rust Crypto hash functions"
 
@@ -26,6 +28,10 @@ sha3 = "0.10.6"
 
 [[bench]]
 name = "tree_from_iter"
+harness = false
+
+[[bench]]
+name = "tree_get_leaves_mut"
 harness = false
 
 [[bench]]

@@ -1,6 +1,10 @@
+# Version 0.0.14
+
+- Improved MerkleLeavesMut update operation with LeftNodeIndexSet.
+
 # Version 0.0.13
 
-- Adds the Merkle proof example
+- Add the Merkle proof example
 
 # Version 0.0.12
 
