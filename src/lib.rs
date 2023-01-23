@@ -28,10 +28,11 @@
 //!     .collect();
 //!
 //! // Verifies the proof of inclusion for the arbitrary leaves.
+//! let tree_leaves = tree.get_leaves();
 //! let leaf_indices = [12, 0, 1, 1201, 13_903, 980];
 //! let leaf_hashes: Vec<_> = leaf_indices
 //!     .iter()
-//!     .map(|index| (*index, tree.leaves().nth(*index).expect("leaf")))
+//!     .map(|index| (*index, tree_leaves[*index]))
 //!     .collect();
 //! assert_eq!(
 //!     tree.proof(&leaf_indices)
@@ -48,7 +49,7 @@
 
 extern crate alloc;
 
-use core::fmt::Debug;
+use core::fmt::{self, Debug};
 use core::mem;
 use core::ops::{Deref, DerefMut, Div, DivAssign, Index, IndexMut};
 
@@ -61,7 +62,7 @@ use digest::{Digest, OutputSizeUser};
 
 type Buffer<B> = <<B as OutputSizeUser>::OutputSize as ArrayLength<u8>>::ArrayType;
 
-/// A binary Merkle tree.
+/// A Merkle tree.
 ///
 /// # Examples
 ///
@@ -81,7 +82,7 @@ type Buffer<B> = <<B as OutputSizeUser>::OutputSize as ArrayLength<u8>>::ArrayTy
 ///     hex!("34fac4b8781d0b811746ec45623606f43df1a8b9009f89c5564e68025a6fd604"),
 /// );
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MerkleTree<B>
 where
     B: Digest,
@@ -92,6 +93,20 @@ where
 
     /// Points to the contiguous memory of array of `data`, e.g. hash value.
     data: Vec<NodeData<B>>,
+}
+
+impl<B> Debug for MerkleTree<B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MerkleTree")
+            .field("leaf_range", &self.leaf_range)
+            .field("tree_depth", &self.depth())
+            .field("data_len", &self.data.len())
+            .finish()
+    }
 }
 
 impl<A, B> FromIterator<A> for MerkleTree<B>
@@ -275,7 +290,40 @@ where
             .map(|node| node.as_ref())
     }
 
-    /// Get the mutable Merkle tree leaves.
+    /// Gets the Merkle tree leaves.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use sha3::Sha3_256;
+    /// use hex_literal::hex;
+    ///
+    /// use merkle_lite::MerkleTree;
+    ///
+    /// // Composes a tree from sequential leaves.
+    /// let leaves: Vec<_> = [[1u8; 32]; 14]
+    ///     .iter()
+    ///     .enumerate()
+    ///     .map(|(i, mut leaf)| leaf.map(|mut leaf| {
+    ///         leaf *= i as u8;
+    ///         leaf
+    ///     }))
+    ///     .collect();
+    /// let tree: MerkleTree<Sha3_256> = leaves.iter().collect();
+    ///
+    /// // Gets the `MerkleLeaves` and checks each element.
+    /// let tree_leaves = tree.get_leaves();
+    /// for (i, leaf) in leaves.iter().enumerate() {
+    ///     assert_eq!(tree_leaves[i].as_slice(), leaf);
+    /// }
+    /// ```
+    pub fn get_leaves(&self) -> MerkleLeaves<B> {
+        MerkleLeaves {
+            leaves: &self.data[self.leaf_range.as_range_usize()],
+        }
+    }
+
+    /// Gets the mutable Merkle tree leaves.
     ///
     /// Please note that updating the Merkle tree through this
     /// `MerkleLeavesMut` is inefficient because it re-calculate
@@ -295,13 +343,12 @@ where
     /// let leaves = [[0u8; 32]; 14];
     /// let mut tree: MerkleTree<Sha3_256> = leaves.iter().collect();
     /// {
-    ///     let leaf_len = tree.leaf_len();
-    ///     let mut leaves = tree.get_leaves_mut();
+    ///     let mut tree_leaves = tree.get_leaves_mut();
     ///
     ///     // sets the leaves with the new hash and update
     ///     // the Merkle root when it drops.
-    ///     (0..leaf_len).for_each(|i| {
-    ///         leaves[i] = [0xab_u8; 32].into();
+    ///     (0..leaves.len()).for_each(|i| {
+    ///         tree_leaves[i] = [0xab_u8; 32].into();
     ///     });
     /// }
     /// assert_eq!(
@@ -336,13 +383,14 @@ where
     ///     .collect();
     ///
     /// // Verifies the proof of inclusion for the particular leaves.
+    /// let leaves = tree.get_leaves();
     /// assert_eq!(
     ///     tree.proof(&[0, 1, 9])
     ///         .unwrap()
     ///         .verify(&[
-    ///             (1, tree.leaves().nth(1).unwrap()),
-    ///             (9, tree.leaves().nth(9).unwrap()),
-    ///             (0, tree.leaves().nth(0).unwrap()),
+    ///             (1, leaves[1]),
+    ///             (9, leaves[9]),
+    ///             (0, leaves[0]),
     ///         ])
     ///         .unwrap()
     ///         .as_ref(),
@@ -441,15 +489,51 @@ where
     }
 }
 
-/// Mutable Merkle tree leaves.
+/// A shared reference to the Merkle leaves.
+///
+/// Please refer to [`MerkleRoot::get_leaves()`] for the example.
+///
+/// [`merkleroot::get_leaves()`]: struct.MerkleTree.html#method.get_leaves
+pub struct MerkleLeaves<'a, B>
+where
+    B: OutputSizeUser,
+    Buffer<B>: Copy,
+{
+    leaves: &'a [NodeData<B>],
+}
+
+impl<'a, B> Debug for MerkleLeaves<'a, B>
+where
+    B: OutputSizeUser,
+    Buffer<B>: Copy,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MerkleLeaves")
+            .field("leaf_len", &self.leaves.len())
+            .finish()
+    }
+}
+
+impl<'a, B> Index<usize> for MerkleLeaves<'a, B>
+where
+    B: OutputSizeUser,
+    Buffer<B>: Copy,
+{
+    type Output = digest::Output<B>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.leaves[index].0.as_ref().unwrap()
+    }
+}
+
+/// A mutable reference to the Merkle leaves.
 ///
 /// It accumulates the changes and triggers the Merkle root calculation
 /// when it drops.
 ///
-/// Please refer to [`MerkleRoot::get_leaves_mut()`] for more detail.
+/// Please refer to [`MerkleRoot::get_leaves_mut()`] for the example.
 ///
 /// [`merkleroot::get_leaves_mut()`]: struct.MerkleTree.html#method.get_leaves_mut
-#[derive(Debug)]
 pub struct MerkleLeavesMut<'a, B>
 where
     B: Digest,
@@ -463,6 +547,19 @@ where
 
     /// mutable reference to the tree for the merkle root calculation.
     tree: &'a mut MerkleTree<B>,
+}
+
+impl<'a, B> Debug for MerkleLeavesMut<'a, B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MerkleLeavesMut")
+            .field("leaf_len", &self.tree.leaf_len())
+            .field("changed_set_len", &self.changed_set.len())
+            .finish()
+    }
 }
 
 impl<'a, B> Drop for MerkleLeavesMut<'a, B>
@@ -511,7 +608,7 @@ where
 /// Please refer to [`MerkleRoot::proof()`] for more detail.
 ///
 /// [`merkleroot::proof()`]: struct.MerkleTree.html#method.proof
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MerkleProof<B>
 where
     B: OutputSizeUser,
@@ -530,6 +627,20 @@ where
     /// will be used as a Merkle root cache for the Merkle proof
     /// verification.
     lemmas: Vec<BTreeMap<NodeIndex, NodeData<B>>>,
+}
+
+impl<B> Debug for MerkleProof<B>
+where
+    B: Digest,
+    Buffer<B>: Copy,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MerkleProof")
+            .field("leaf_range", &self.leaf_range)
+            .field("leaf_indices_len", &self.leaf_indices.len())
+            .field("leaf_lemmas_depth", &self.lemmas.len())
+            .finish()
+    }
 }
 
 impl<B> MerkleProof<B>
@@ -977,8 +1088,14 @@ impl LeftNodeIndexSet {
 }
 
 /// A node index range.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 struct NodeIndexRange(core::ops::Range<NodeIndex>);
+
+impl Debug for NodeIndexRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}..{}", *self.start, *self.end))
+    }
+}
 
 impl Deref for NodeIndexRange {
     type Target = core::ops::Range<NodeIndex>;

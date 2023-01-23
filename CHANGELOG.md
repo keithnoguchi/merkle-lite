@@ -1,3 +1,8 @@
+# Version 0.0.15
+
+- Add MerkleLeaves type to access leaves by indices.
+- Add Debug implementation for the public types.
+
 # Version 0.0.14
 
 - Improved MerkleLeavesMut update operation with LeftNodeIndexSet.
